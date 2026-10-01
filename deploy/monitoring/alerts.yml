@@ -1,0 +1,33 @@
+groups:
+  - name: golge-kuklaci
+    rules:
+      - alert: GolgeApiDown
+        expr: up{job="api"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "API is not answering /metrics" }
+      - alert: GolgeRealtimeDown
+        expr: up{job="realtime"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "Duel (Colyseus) server is down" }
+      - alert: GolgeHigh5xxRate
+        expr: sum(rate(golge_http_requests_total{status=~"5.."}[5m])) > 0.5
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "More than 0.5 server errors per second" }
+      - alert: GolgeRunRejectionSpike
+        expr: sum(rate(golge_runs_rejected_total[15m])) > 0.2 and sum(rate(golge_runs_rejected_total[15m])) > 0.3 * sum(rate(golge_runs_finished_total[15m]))
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Many rejected runs — possible cheat wave or client bug" }
+      - alert: GolgeRewardsPaused
+        expr: max(golge_rewards_paused) == 1
+        for: 1m
+        labels: { severity: warning }
+        annotations: { summary: "Economy circuit breaker is open: rewards are paused" }
+      - alert: GolgeDuelRoomsHigh
+        expr: max(golge_duel_rooms) > 500
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Unusually many open duel rooms (leak or load)" }
