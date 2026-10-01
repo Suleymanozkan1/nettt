@@ -29,7 +29,7 @@ await page.getByTestId('pause').waitFor({ timeout: 30_000 });
 const size = /(\d+)x(\d+)/.exec((await device.shell('wm size')).toString());
 const [w, h] = size ? [Number(size[1]), Number(size[2])] : [320, 640];
 for (let i = 0; i < 6; i++) {
-  await device.input.tap({ x: Math.round(w / 2), y: Math.round(h * 0.62) });
+  await device.shell(`input tap ${Math.round(w / 2)} ${Math.round(h * 0.62)}`); // OS-level touch via adb
   await page.waitForTimeout(1100);
 }
 await device.screenshot({ path: `${OUT}/11-playing.png` });
