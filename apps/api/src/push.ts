@@ -50,8 +50,9 @@ export class FcmSender {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${await this.accessToken()}` },
         body: JSON.stringify({ message: { token, notification: { title, body }, android: { priority: 'high' } } }),
       });
-      // 404 UNREGISTERED / 400 INVALID_ARGUMENT: the token is dead and should be forgotten.
-      const result: SendResult = res.ok ? 'ok' : res.status === 404 || res.status === 400 ? 'invalid_token' : 'error';
+      // Only UNREGISTERED (404) means the token is dead. Other 400s can be a bad payload; never drop tokens for those.
+      const detail = res.ok ? '' : await res.text().catch(() => '');
+      const result: SendResult = res.ok ? 'ok' : res.status === 404 || detail.includes('UNREGISTERED') ? 'invalid_token' : 'error';
       metrics.pushSent.inc({ result });
       return result;
     } catch {
@@ -80,6 +81,7 @@ export async function runDailyReminders(prisma: PrismaClient, sender: FcmSender,
     const r = await sender.send(t.token, 'Gölge Kuklacı', 'Günlük ödülün ve yeni görevlerin hazır. Perde açılıyor!');
     if (r === 'ok') sent++;
     else if (r === 'invalid_token') await prisma.pushToken.deleteMany({ where: { id: t.id } });
+    else await prisma.pushToken.updateMany({ where: { id: t.id, lastSentDay: day }, data: { lastSentDay: t.lastSentDay } }); // retry on the next check
   }
   return sent;
 }

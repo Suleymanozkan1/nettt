@@ -13,6 +13,8 @@ let base = '';
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const sent: { auth: string; body: { message: { token: string; notification: { title: string } } } }[] = [];
 const DEAD = 'dead-token-0000000000000000';
+const BAD_PAYLOAD = 'bad-payload-00000000000000';
+const FLAKY = 'flaky-token-00000000000000';
 
 beforeAll(async () => {
   app = await makeApp();
@@ -33,7 +35,9 @@ beforeAll(async () => {
       if (req.url === '/v1/projects/golge-test/messages:send') {
         const body = JSON.parse(raw);
         sent.push({ auth: String(req.headers.authorization), body });
-        if (body.message.token === DEAD) { res.writeHead(404).end('{"error":{"status":"NOT_FOUND"}}'); return; }
+        if (body.message.token === DEAD) { res.writeHead(404).end('{"error":{"status":"NOT_FOUND","details":[{"errorCode":"UNREGISTERED"}]}}'); return; }
+        if (body.message.token === BAD_PAYLOAD) { res.writeHead(400).end('{"error":{"status":"INVALID_ARGUMENT"}}'); return; }
+        if (body.message.token === FLAKY) { res.writeHead(503).end(); return; }
         res.writeHead(200, { 'content-type': 'application/json' }).end('{"name":"projects/golge-test/messages/1"}');
         return;
       }
@@ -87,6 +91,20 @@ describe('push notifications (FCM)', () => {
     sent.length = 0;
     expect(await runDailyReminders(prisma, sender())).toBe(0);
     expect(sent).toHaveLength(0);
+  });
+
+  it('keeps tokens on payload errors and retries after transient failures', async () => {
+    const a = await guest(app);
+    const b = await guest(app);
+    for (const g of [a, b]) await app.inject({ method: 'PATCH', url: '/me/settings', headers: g.headers, payload: { notifications: true } });
+    await register(a.headers, BAD_PAYLOAD);
+    await register(b.headers, FLAKY);
+    expect(await runDailyReminders(prisma, sender())).toBe(0);
+    expect(await prisma.pushToken.count()).toBe(2); // a 400 without UNREGISTERED is not a dead token
+    expect((await prisma.pushToken.findUnique({ where: { token: FLAKY } }))!.lastSentDay).toBeNull(); // will retry
+    sent.length = 0;
+    await runDailyReminders(prisma, sender());
+    expect(sent.map((s) => s.body.message.token)).toContain(FLAKY);
   });
 
   it('is disabled without a service account', () => {

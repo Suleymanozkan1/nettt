@@ -13,7 +13,7 @@ import com.getcapacitor.WebViewListener;
 import java.util.Locale;
 
 /**
- * Edge-to-edge: the stage draws behind the status/navigation bars and display cutouts. The system insets are
+ * Edge-to-edge: the stage draws behind the status/navigation bars, display cutouts and the keyboard. The system insets are
  * passed to the page as CSS variables (--native-sat/sab/sal/sar, in CSS px) because Android WebView does not
  * reliably report env(safe-area-inset-*). They are re-sent after every page load.
  */
@@ -33,7 +33,8 @@ public class MainActivity extends BridgeActivity {
 
         WebView webView = getBridge().getWebView();
         ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
-            Insets i = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            // The keyboard (IME) counts as a bottom inset, so focused fields stay visible above it.
+            Insets i = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime());
             float d = getResources().getDisplayMetrics().density;
             insetsJs = String.format(Locale.US,
                 "(function(s){s.setProperty('--native-sat','%.1fpx');s.setProperty('--native-sab','%.1fpx');"

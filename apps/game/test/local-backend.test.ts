@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CATALOG, RunSim, computeRunRewards, replayRun, type RunInput, type RunParams } from '@stage/shared';
-import { createLocalApi, type KeyValue } from '../src/lib/local-backend';
+import { createLocalApi, pruneHistory, type KeyValue, type Show } from '../src/lib/local-backend';
 
 function memoryStore(): KeyValue & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -111,6 +111,14 @@ describe('local (offline) backend', () => {
     for (let i = 0; i < 5; i++) seeds.add((await api.startRun({ mode: 'challenge' })).seed);
     expect(seeds.size).toBe(1);
     await expect(api.startRun({ mode: 'challenge' })).rejects.toMatchObject({ code: 'challenge_attempts_used' });
+  });
+
+  it('record history: old high scores never crowd out this week\'s boards', () => {
+    const old: Show[] = Array.from({ length: 60 }, (_, i) => ({ score: 1000 + i, at: '2026-01-05', mode: 'normal', week: '2026-W02' }));
+    const kept = pruneHistory([...old, { score: 3, at: '2026-10-01', mode: 'normal', week: '2026-W40' }, { score: 2, at: '2026-10-01', mode: 'challenge', week: '2026-W40' }]);
+    expect(kept.filter((h) => h.week === '2026-W40')).toHaveLength(2);
+    expect(kept.filter((h) => h.week === '2026-W02')).toHaveLength(10);
+    expect(Math.max(...kept.map((h) => h.score))).toBe(1059);
   });
 
   it('online-only features fail clearly', async () => {

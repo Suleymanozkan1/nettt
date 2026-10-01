@@ -14,9 +14,10 @@ import type { Api, FinishResult, LeaderboardData, Profile, RunMode } from './api
  * stored on the device. Rewards use the server's shared rules, computed from a replay of the recorded inputs.
  */
 const STATE_KEY = 'stage.local.v1';
-const HISTORY_KEEP = 50;
+const BOARD_SIZE = 10;
+const WEEKS_KEPT = 8;
 
-interface Show { score: number; at: string; mode: RunMode; week: string | null }
+export interface Show { score: number; at: string; mode: RunMode; week: string | null }
 interface PendingRun { id: string; seed: number; params: RunParams; mode: RunMode; week: string | null }
 export interface LocalState {
   v: 1;
@@ -45,6 +46,22 @@ function fresh(): LocalState {
 }
 
 const err = (status: number, code: string) => new ApiError(status, code);
+
+/**
+ * Keeps what the record boards can show: the all-time top normal shows, plus the top shows of each board
+ * (normal / challenge) for the most recent weeks. Low scores in a new week are never crowded out by old highs.
+ */
+export function pruneHistory(history: Show[]): Show[] {
+  const byScore = [...history].sort((a, b) => b.score - a.score);
+  const weeks = [...new Set(history.map((h) => h.week ?? ''))].sort().reverse().slice(0, WEEKS_KEPT);
+  const keep = new Set(byScore.filter((h) => h.mode === 'normal').slice(0, BOARD_SIZE));
+  for (const week of weeks) {
+    for (const mode of ['normal', 'challenge'] as const) {
+      for (const h of byScore.filter((x) => x.mode === mode && (x.week ?? '') === week).slice(0, BOARD_SIZE)) keep.add(h);
+    }
+  }
+  return byScore.filter((h) => keep.has(h));
+}
 const owns = (s: LocalState, id: string) => findItem(id)?.price === 0 || s.owned.includes(id);
 
 export function createLocalApi(store: KeyValue = storage, now: () => Date = () => new Date()): Api {
@@ -100,7 +117,7 @@ export function createLocalApi(store: KeyValue = storage, now: () => Date = () =
     const week = isoWeekKey(now());
     const shows = s.history.filter((h) => h.score > 0 && (period === 'all' ? h.mode === 'normal'
       : period === 'challenge' ? h.mode === 'challenge' && h.week === week : h.mode === 'normal' && h.week === week));
-    const top = [...shows].sort((a, b) => b.score - a.score).slice(0, 10);
+    const top = [...shows].sort((a, b) => b.score - a.score).slice(0, BOARD_SIZE);
     return {
       period,
       entries: top.map((h, i) => ({ rank: i + 1, name: `${s.displayName} · ${h.at.slice(0, 10)}`, score: h.score, character: s.character, me: true })),
@@ -168,8 +185,7 @@ export function createLocalApi(store: KeyValue = storage, now: () => Date = () =
       s.maxAct = Math.max(s.maxAct, summary.level);
       const newBest = run.mode === 'normal' && summary.score > s.bestScore;
       if (newBest) s.bestScore = summary.score;
-      s.history = [...s.history, { score: summary.score, at: now().toISOString(), mode: run.mode, week: run.week ?? isoWeekKey(now()) }]
-        .sort((a, b) => b.score - a.score).slice(0, HISTORY_KEEP);
+      s.history = pruneHistory([...s.history, { score: summary.score, at: now().toISOString(), mode: run.mode, week: run.week ?? isoWeekKey(now()) }]);
       const missions = dailyMissions(s.id, s.day.key).map((m) => {
         const prev = s.day.missions[m.key] ?? 0;
         const value = applyRunToMission(m, 0, summary);
