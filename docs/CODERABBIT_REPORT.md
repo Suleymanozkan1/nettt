@@ -11,7 +11,7 @@ CodeRabbit itself could not be run in this environment:
 | CodeRabbit CLI | Not installed (`which coderabbit` → not found) |
 | CodeRabbit GitHub App | No pull request exists (none was requested), so the App had nothing to review |
 
-Instead, the independent `code-review` tool of this Claude Code session was run over the committed diffs: three times in round 1 and four times in round 2. **These are not CodeRabbit results.**
+Instead, the independent `code-review` tool of this Claude Code session was run over the committed diffs: three times in round 1, four times in round 2 and three times in round 3. **These are not CodeRabbit results.**
 
 ## Pass 1: `HEAD~1..HEAD` of the game commit (high effort)
 
@@ -63,15 +63,41 @@ Instead, the independent `code-review` tool of this Claude Code session was run 
 
 **No bugs found.**
 
+## Round 3 (invites, admin cookie, PoW, TLS, cluster, economy, CI device jobs)
+
+### Pass 8: round-3 diff (high effort)
+
+| # | Finding | Fix |
+|---|---|---|
+| 16 | `duelJoin` (invite) was not cleared when going home, so a later "Düello" re-joined the old private room | Reset on home |
+| 17 | Daily pacing counters were read without a lock, so parallel finishes could both pay full credits | Read under a per-player `pg_advisory_xact_lock` |
+| 18 | `decodeURIComponent` on a malformed invite link threw and broke start-up | Wrapped in try/catch → `null` |
+| 19 | Opening an invite during a solo show left the show running underneath | The invite stops the running show first |
+| 20 | `trustProxy: true` let any client spoof `X-Forwarded-For` and dodge per-IP limits; compose published API/realtime on all interfaces | TRUST_PROXY accepts a CIDR list (private ranges by default); ports bound to 127.0.0.1 |
+
+### Pass 9: CI scripts (medium effort)
+
+| # | Finding | Fix |
+|---|---|---|
+| 21 | Deep-link smoke step never failed (an error was only logged) | `grep -qi error → exit 1` |
+| 22 | `device.tap` takes a selector, not coordinates, so no OS touch was sent | adb `input tap x y` |
+
+### Pass 10: CI run follow-ups
+
+| # | Finding | Fix |
+|---|---|---|
+| 23 | `run-as sh -c` hung the emulator job | Per-file `run-as ls` / `exec-out cat` loop + adb timeouts |
+| 24 | Blind taps end the show (3 misses), so the pause button the script waited for no longer existed | Finish via the game-over "Sonuçlar" button when the show is already over |
+
 ## Re-run after changes
 
 | Step | Result |
 |---|---|
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
-| `pnpm test` | PASS (25 shared + 6 game + 33 API = 64) |
+| `pnpm test` | PASS (34 shared + 6 game + 42 API = 82) |
 | `pnpm build` | PASS (game + admin pages, 3D chunk) |
-| `pnpm e2e` (Playwright) | PASS 12, 2 desktop-only skips (incl. two-browser duel, admin panel) |
+| `pnpm e2e` (Playwright) | PASS 14, 4 desktop-only skips (incl. two-browser duel, invite, revive, admin panel) |
 
 ## How to get a real CodeRabbit review
 
