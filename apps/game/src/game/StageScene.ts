@@ -125,7 +125,9 @@ export class StageScene extends Phaser.Scene {
     const sim = this.sim;
     if (!sim || sim.state === 'dead') return;
     const t = this.now();
-    if (sim.quit(t)) this.inputs.push({ t, k: 'quit' });
+    // Resolve due timeouts first, exactly like the server replay; if they end the show, there is nothing to quit.
+    this.process(sim.advance(t));
+    if (sim.state === 'active' && sim.quit(t)) this.inputs.push({ t, k: 'quit' });
     this.deadNotified = true;
   }
 

@@ -35,6 +35,11 @@ export function findMission(key: string): MissionDef | undefined {
   return POOL.find((m) => m.key === key);
 }
 
+/** Cumulative kinds add up across runs; the others keep the best single-run value. */
+export function isCumulative(kind: MissionKind): boolean {
+  return kind === 'runs' || kind === 'fits' || kind === 'perfects';
+}
+
 /** New progress value after a run. Cumulative kinds add up; best-of kinds keep the max. */
 export function applyRunToMission(m: MissionDef, current: number, s: RunSummary): number {
   switch (m.kind) {

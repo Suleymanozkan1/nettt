@@ -7,8 +7,12 @@ const Env = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   PORT: z.coerce.number().int().default(3000),
   DAILY_CREDIT_LIABILITY_LIMIT: z.coerce.number().int().positive().default(5_000_000),
+  RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(120),
+  RUN_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(30),
   AUTH_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(10),
   GUEST_ACCOUNTS_PER_IP_PER_DAY: z.coerce.number().int().positive().default(20),
+  /** Only enable behind a reverse proxy you control; otherwise X-Forwarded-For lets clients spoof their IP. */
+  TRUST_PROXY: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   NODE_ENV: z.string().default('development'),
 });
 

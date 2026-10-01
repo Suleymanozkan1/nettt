@@ -112,6 +112,26 @@ describe('RunSim', () => {
   });
 });
 
+describe('review regressions', () => {
+  it('dying on the last round of a boss act does not count as clearing the boss', () => {
+    const sim = new RunSim(99, { toleranceLevel: 3, encoreLevel: 0 });
+    let t = 0;
+    for (let i = 0; i < ROUNDS_PER_LEVEL * 5 - 3; i++) { t = bestTime(sim, nextStart(sim, t)); sim.tap(t); }
+    expect(sim.level).toBe(5);
+    sim.advance(t + 100_000); // last 3 boss rounds time out: 3 lives lost, final one ends the act
+    expect(sim.state).toBe('dead');
+    expect(sim.bossCleared).toBe(0);
+  });
+
+  it('a quit after a missed deadline is resolved like the server: timeouts first', () => {
+    const sim = new RunSim(3, DEFAULT_PARAMS);
+    const deadline = roundTimeMs(1);
+    sim.advance(deadline + 1);
+    expect(sim.lives).toBe(START_LIVES - 1);
+    expect(replayRun(3, DEFAULT_PARAMS, [{ t: deadline + 1, k: 'quit' }])).toMatchObject({ ok: true, summary: { misses: 1 } });
+  });
+});
+
 describe('difficulty curve', () => {
   it('speeds up per level, caps, shortens rounds', () => {
     expect(levelForRounds(0)).toBe(1);

@@ -36,8 +36,12 @@ export function clearBreakerCache(): void { cache = null; }
 export async function rewardsPaused(prisma: PrismaClient, limit: number): Promise<boolean> {
   if (cache && Date.now() - cache.at < 10_000) return cache.paused;
   const row = await prisma.economyConfig.findUnique({ where: { key: BREAKER_KEY } });
-  let paused = (row?.value as { paused?: boolean } | null)?.paused === true;
-  if (!paused) {
+  const value = row?.value as { paused?: boolean; by?: string } | null;
+  let paused = value?.paused === true;
+  // An admin decision made within the last 24h wins over the automatic check, so an admin can
+  // resume rewards after investigating an auto-trip (the 24h sum would otherwise re-trip it).
+  const adminOverride = !!row && value?.by?.startsWith('admin:') === true && Date.now() - row.updatedAt.getTime() < 86_400_000;
+  if (!paused && !adminOverride) {
     const since = new Date(Date.now() - 86_400_000);
     const agg = await prisma.transaction.aggregate({ _sum: { amount: true }, where: { currency: 'credits', amount: { gt: 0 }, createdAt: { gte: since }, reason: { in: REWARD_REASONS } } });
     if ((agg._sum.amount ?? 0) > limit) {

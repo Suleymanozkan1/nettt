@@ -136,7 +136,7 @@ export class RunSim {
     this.rounds += 1;
     const level = this.level;
     const levelUp = level > before;
-    if (levelUp && isBossLevel(before)) this.bossCleared += 1;
+    if (levelUp && isBossLevel(before) && this.lives > 0) this.bossCleared += 1;
     if (this.lives <= 0) {
       this.state = 'dead';
       this.deathT = t;

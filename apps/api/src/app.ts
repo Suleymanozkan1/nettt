@@ -30,7 +30,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: deps.logger === false ? false : { level: 'info', redact: ['req.headers.authorization', 'req.body.password'] },
     bodyLimit: 256 * 1024,
-    trustProxy: true,
+    trustProxy: deps.config.TRUST_PROXY,
   });
   app.decorate('deps', deps);
 
@@ -39,7 +39,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(cors, { origin: origins, methods: ['GET', 'POST', 'PATCH'] });
   await app.register(jwt, { secret: deps.config.JWT_SECRET, sign: { expiresIn: '30d' } });
   await app.register(rateLimit, {
-    max: 120,
+    max: deps.config.RATE_LIMIT_PER_MIN,
     timeWindow: '1 minute',
     redis: deps.redis,
     nameSpace: 'stage-rl:',

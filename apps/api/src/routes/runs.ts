@@ -3,7 +3,7 @@ import { randomInt } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import {
   FinishRunBody, MAX_RUN_MS, REVIVE_GEM_COST, replayRun, computeRunRewards, dailyMissions, applyRunToMission,
-  utcDay, type RunParams,
+  isCumulative, utcDay, type RunParams,
 } from '@stage/shared';
 import { HttpError, parse } from '../errors';
 import { grant, rewardsPaused, spend } from '../ledger';
@@ -15,7 +15,7 @@ const REJECTIONS_BEFORE_FLAG = 3;
 
 export async function runRoutes(app: FastifyInstance): Promise<void> {
   const { prisma, config } = app.deps;
-  const limited = { onRequest: [app.authenticate], config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
+  const limited = { onRequest: [app.authenticate], config: { rateLimit: { max: config.RUN_RATE_LIMIT_PER_MIN, timeWindow: '1 minute' } } };
 
   app.post('/runs', limited, async (req) => {
     const uid = userId(req);
@@ -67,11 +67,9 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
         if (flipped.count !== 1) throw new HttpError(409, 'run_already_submitted');
         if (summary.revives > 0) await spend(tx, uid, 'gems', REVIVE_GEM_COST * summary.revives, 'revive', run.id);
 
-        const before = await tx.user.findUniqueOrThrow({ where: { id: uid }, select: { bestScore: true } });
-        await tx.user.update({
-          where: { id: uid },
-          data: { fans: { increment: rewards.fans }, totalRuns: { increment: 1 }, bestScore: Math.max(before.bestScore, summary.score) },
-        });
+        await tx.user.update({ where: { id: uid }, data: { fans: { increment: rewards.fans }, totalRuns: { increment: 1 } } });
+        // Conditional write: concurrent finishes can only ever raise the best score.
+        const newBest = (await tx.user.updateMany({ where: { id: uid, bestScore: { lt: summary.score } }, data: { bestScore: summary.score } })).count === 1;
         const credits = paused ? 0 : await grant(tx, uid, 'credits', rewards.credits, 'run', run.id);
         const gems = paused ? 0 : await grant(tx, uid, 'gems', rewards.gems, 'run', run.id);
 
@@ -82,12 +80,15 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
             create: { userId: uid, day, missionKey: m.key, progress: 0 },
             update: {},
           });
-          const progress = applyRunToMission(m, row.progress, summary);
-          await tx.missionProgress.update({ where: { id: row.id }, data: { progress } });
+          // Atomic updates so concurrent finishes never lose progress.
+          const value = applyRunToMission(m, 0, summary);
+          if (isCumulative(m.kind)) await tx.missionProgress.update({ where: { id: row.id }, data: { progress: { increment: value } } });
+          else await tx.missionProgress.updateMany({ where: { id: row.id, progress: { lt: value } }, data: { progress: value } });
+          const { progress } = await tx.missionProgress.findUniqueOrThrow({ where: { id: row.id }, select: { progress: true } });
           missions.push({ key: m.key, label: m.label, progress: Math.min(progress, m.target), target: m.target, completed: progress >= m.target });
         }
         await track(tx, uid, 'run_finish', { runId: run.id, ...summary, credits, gems });
-        return { credits, gems, newBest: summary.score > before.bestScore, missions };
+        return { credits, gems, newBest, missions };
       });
       return { verified: true, summary, rewards: { fans: rewards.fans, credits: result.credits, gems: result.gems }, rewardsPaused: paused, newBest: result.newBest, missions: result.missions };
     } catch (err) {
@@ -102,7 +103,7 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
   async function reject(runId: string, uid: string, reason: string): Promise<void> {
     await prisma.run.updateMany({ where: { id: runId, status: 'STARTED' }, data: { status: 'REJECTED', rejectReason: reason, finishedAt: new Date() } });
     await track(prisma, uid, 'run_rejected', { runId, reason });
-    const recent = await prisma.run.count({ where: { userId: uid, status: 'REJECTED', finishedAt: { gte: new Date(Date.now() - 86_400_000) } } });
+    const recent = await prisma.run.count({ where: { userId: uid, status: 'REJECTED', rejectReason: { not: 'abandoned' }, finishedAt: { gte: new Date(Date.now() - 86_400_000) } } });
     if (recent >= REJECTIONS_BEFORE_FLAG) await prisma.user.update({ where: { id: uid }, data: { flagged: true } });
   }
 }

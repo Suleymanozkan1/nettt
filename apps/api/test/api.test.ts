@@ -95,6 +95,16 @@ describe('runs (server-authoritative)', () => {
     expect(await prisma.run.findUniqueOrThrow({ where: { id: old.runId } })).toMatchObject({ status: 'REJECTED', rejectReason: 'abandoned' });
   });
 
+  it('abandoned runs do not count towards flagging', async () => {
+    const g = await guest(app);
+    for (let i = 0; i < 3; i++) {
+      await prisma.run.create({ data: { userId: g.id, seed: 1, params: {}, status: 'REJECTED', rejectReason: 'abandoned', finishedAt: new Date() } });
+    }
+    const s = await app.inject({ method: 'POST', url: '/runs', headers: g.headers });
+    await app.inject({ method: 'POST', url: `/runs/${s.json().runId}/finish`, headers: g.headers, payload: { inputs: [{ t: 700, k: 'tap' }, { t: 710, k: 'tap' }] } });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: g.id } })).flagged).toBe(false);
+  });
+
   it('rejects runs submitted faster than real time (speed hack)', async () => {
     const g = await guest(app);
     const { fin } = await playRun(g.headers, 4, { backdate: false });
@@ -214,7 +224,29 @@ describe('admin', () => {
   });
 });
 
+describe('circuit breaker override', () => {
+  it('an admin can resume rewards after an automatic liability trip', async () => {
+    const tight = await makeApp({ DAILY_CREDIT_LIABILITY_LIMIT: '10' });
+    const a = await guest(tight);
+    await prisma.user.update({ where: { id: a.id }, data: { role: 'ADMIN' } });
+    await prisma.transaction.create({ data: { userId: a.id, currency: 'credits', amount: 50, balanceAfter: 50, reason: 'run', refId: 'x' } });
+    expect((await tight.inject({ method: 'GET', url: '/admin/economy', headers: a.headers })).json().rewardsPaused).toBe(true);
+    await tight.inject({ method: 'POST', url: '/admin/economy', headers: a.headers, payload: { paused: false } });
+    expect((await tight.inject({ method: 'GET', url: '/admin/economy', headers: a.headers })).json().rewardsPaused).toBe(false);
+    expect((await tight.inject({ method: 'POST', url: '/daily/claim', headers: a.headers })).statusCode).toBe(200);
+    await tight.close();
+  });
+});
+
 describe('rate limiting & security headers', () => {
+  it('does not trust X-Forwarded-For by default (no IP spoofing past limits)', async () => {
+    const limited = await makeApp({ AUTH_RATE_LIMIT_PER_MIN: '2' });
+    const codes = [];
+    for (let i = 0; i < 4; i++) codes.push((await limited.inject({ method: 'POST', url: '/auth/login', headers: { 'x-forwarded-for': `10.0.0.${i}` }, payload: { email: 'n@x.io', password: 'x' } })).statusCode);
+    expect(codes).toEqual([401, 401, 429, 429]);
+    await limited.close();
+  });
+
   it('limits auth endpoints per IP and sets helmet headers', async () => {
     const limited = await makeApp({ AUTH_RATE_LIMIT_PER_MIN: '3' });
     const codes = [];

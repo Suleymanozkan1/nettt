@@ -10,7 +10,7 @@ export const prisma = new PrismaClient();
 
 export async function makeApp(env: Record<string, string> = {}): Promise<FastifyInstance> {
   clearBreakerCache();
-  const config = loadConfig({ ...process.env, JWT_SECRET: 'test-secret-test-secret-test-secret-1234', CORS_ORIGINS: 'http://localhost:5173', AUTH_RATE_LIMIT_PER_MIN: '10000', ...env });
+  const config = loadConfig({ ...process.env, JWT_SECRET: 'test-secret-test-secret-test-secret-1234', CORS_ORIGINS: 'http://localhost:5173', AUTH_RATE_LIMIT_PER_MIN: '10000', RATE_LIMIT_PER_MIN: '100000', RUN_RATE_LIMIT_PER_MIN: '100000', ...env });
   return buildApp({ prisma, config, logger: false });
 }
 
