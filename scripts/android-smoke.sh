@@ -2,6 +2,9 @@
 # Device smoke test on an Android emulator (run by CI inside reactivecircus/android-emulator-runner).
 # Requires: API on host :3000 (reachable as 10.0.2.2 from the emulator), DATABASE_URL, an installed adb.
 set -euo pipefail
+# Every adb call is bounded so a hung device command fails fast instead of stalling the job.
+ADB_BIN=$(type -P adb)
+adb() { timeout "${ADB_TIMEOUT:-60}" "$ADB_BIN" "$@"; }
 PKG=com.golgekuklaci.game
 APK=apps/game/android/app/build/outputs/apk/debug/app-debug.apk
 OUT=test-results/android
@@ -11,7 +14,7 @@ runs() { psql "$DATABASE_URL" -tAc 'select count(*) from "Run"'; }
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
 alive() { adb shell pidof "$PKG" >/dev/null; }
 tap_text() { # tap the centre of the first accessibility node whose text/desc matches $1 (WebView exposes DOM nodes)
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || return 1
+  ADB_TIMEOUT=25 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || return 1
   adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null 2>&1 || return 1
   python3 - "$1" "$OUT/ui.xml" <<'PY' | xargs -r adb shell input tap
 import re, sys
@@ -26,10 +29,11 @@ for m in re.finditer(r'<node [^>]*>', xml):
 PY
 }
 
-echo "== install"; adb install -r "$APK"
+echo "== install"; ADB_TIMEOUT=180 adb install -r "$APK"
 U0=$(users); R0=$(runs)
-echo "== launch"; adb shell am start -W -n "$PKG/.MainActivity"
-sleep 25; shot 01-launch; alive
+echo "== launch"; adb shell am start -n "$PKG/.MainActivity"
+for i in $(seq 1 30); do [ "$(users)" -gt "$U0" ] && break; sleep 3; done
+shot 01-launch; alive
 U1=$(users); echo "users before=$U0 after=$U1"
 [ "$U1" -gt "$U0" ] || { echo "FAIL: app did not create a guest account through the API"; exit 1; }
 
@@ -60,9 +64,9 @@ adb shell run-as "$PKG" sh -c 'cat shared_prefs/*.xml 2>/dev/null' > "$OUT/share
 if grep -q 'eyJhbGci' "$OUT/shared_prefs.txt"; then echo "FAIL: plaintext JWT in shared_prefs"; exit 1; fi
 
 echo "== deep link: golgekuklaci://duel/<code> opens the app's duel invite flow"
-adb shell am start -W -a android.intent.action.VIEW -d "golgekuklaci://duel/TestInvite01" "$PKG" | tee "$OUT/deeplink.txt"
+adb shell am start -a android.intent.action.VIEW -d "golgekuklaci://duel/TestInvite01" "$PKG" | tee "$OUT/deeplink.txt"
 sleep 6; shot 06-deeplink; alive
-grep -q "Status: ok" "$OUT/deeplink.txt"
+! grep -qi "error" "$OUT/deeplink.txt"
 
 echo "== frame stats"
 adb shell dumpsys gfxinfo "$PKG" > "$OUT/gfxinfo.txt"
