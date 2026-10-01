@@ -46,6 +46,16 @@ describe('auth', () => {
     const me = await app.inject({ method: 'GET', url: '/me', headers: { authorization: `Bearer ${login.json().token}` } });
     expect(me.json()).toMatchObject({ id: g.id, displayName: 'Alice', registered: true });
   });
+
+  it('never re-keys an account that already has credentials (bearer token alone is not enough)', async () => {
+    const g = await guest(app);
+    await app.inject({ method: 'POST', url: '/auth/register', headers: g.headers, payload: { email: 'owner@x.io', password: 'owner-pass-123' } });
+    const takeover = await app.inject({ method: 'POST', url: '/auth/register', headers: g.headers, payload: { email: 'evil@x.io', password: 'evil-pass-123' } });
+    expect(takeover.statusCode).toBe(409);
+    expect(takeover.json().error).toBe('already_registered');
+    expect((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'owner@x.io', password: 'owner-pass-123' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'evil@x.io', password: 'evil-pass-123' } })).statusCode).toBe(401);
+  });
 });
 
 describe('proof-of-work for guest accounts', () => {
@@ -262,6 +272,8 @@ describe('admin', () => {
     await app.inject({ method: 'POST', url: '/admin/economy', headers: p.headers, payload: { paused: true } });
     expect((await app.inject({ method: 'GET', url: '/admin/economy', headers: p.headers })).json().rewardsPaused).toBe(true);
     expect((await app.inject({ method: 'GET', url: `/admin/users/${p.id}`, headers: p.headers })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/admin/users/no-such-user/unflag', headers: p.headers })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: `/admin/users/${p.id}/unflag`, headers: p.headers })).statusCode).toBe(200);
   });
 });
 

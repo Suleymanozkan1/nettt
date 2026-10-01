@@ -11,9 +11,11 @@ const app = await buildApp({ prisma, config, redis });
 
 // Opt-in daily reminder push: checked every 10 minutes, sent once per device per day at the configured hour.
 const fcm = FcmSender.fromEnv(config.FCM_SERVICE_ACCOUNT, config.FCM_ENDPOINT);
+let reminderRunning = false;
 const reminderTimer = fcm ? setInterval(() => {
-  if (new Date().getUTCHours() !== config.PUSH_REMINDER_HOUR_UTC) return;
-  runDailyReminders(prisma, fcm).then((n) => { if (n) app.log.info({ sent: n }, 'daily reminder push'); }, (err) => app.log.error(err, 'reminder push failed'));
+  if (reminderRunning || new Date().getUTCHours() !== config.PUSH_REMINDER_HOUR_UTC) return;
+  reminderRunning = true;
+  runDailyReminders(prisma, fcm).finally(() => { reminderRunning = false; }).then((n) => { if (n) app.log.info({ sent: n }, 'daily reminder push'); }, (err) => app.log.error(err, 'reminder push failed'));
 }, 10 * 60_000) : undefined;
 if (!fcm) app.log.info('FCM_SERVICE_ACCOUNT not set: push notifications disabled');
 
