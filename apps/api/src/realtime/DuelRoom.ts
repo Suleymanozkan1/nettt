@@ -47,6 +47,8 @@ export class DuelRoom extends Room<DuelState> {
   private seats = new Map<string, Seat>();
   /** Users between authentication and onJoin — guards concurrent joins of the same account. */
   private pending = new Set<string>();
+  /** sessionId → userId from onAuth, so onLeave can clear `pending` even if onJoin never ran. */
+  private authed = new Map<string, string>();
   private startedAt = 0;
   private countdown: { clear(): void } | null = null;
   private verify!: (token: string) => { sub: string; tv?: number };
@@ -65,7 +67,7 @@ export class DuelRoom extends Room<DuelState> {
     metrics.duelRooms.inc();
   }
 
-  async onAuth(_client: Client, _options: unknown, context: AuthContext): Promise<AuthData> {
+  async onAuth(client: Client, _options: unknown, context: AuthContext): Promise<AuthData> {
     let payload: { sub: string; tv?: number };
     try { payload = this.verify(context.token ?? ''); } catch { throw new ServerError(401, 'unauthorized'); }
     // Seats are only handed out before the show starts (a reservation can outlive the countdown).
@@ -73,6 +75,7 @@ export class DuelRoom extends Room<DuelState> {
     // Synchronous check-and-mark before any await, so two parallel joins of one account cannot both pass.
     if (this.pending.has(payload.sub) || [...this.seats.values()].some((s) => s.userId === payload.sub)) throw new ServerError(409, 'already_in_room');
     this.pending.add(payload.sub);
+    this.authed.set(client.sessionId, payload.sub);
     try {
       const user = await DuelRoom.deps.prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, displayName: true, character: true, tokenVersion: true, flagged: true } });
       if (!user || (payload.tv ?? 0) !== user.tokenVersion) throw new ServerError(401, 'unauthorized');
@@ -80,6 +83,7 @@ export class DuelRoom extends Room<DuelState> {
       return { userId: user.id, name: user.displayName, character: user.character };
     } catch (err) {
       this.pending.delete(payload.sub);
+      this.authed.delete(client.sessionId);
       throw err;
     }
   }
@@ -99,7 +103,9 @@ export class DuelRoom extends Room<DuelState> {
   onLeave(client: Client): void {
     const seat = this.seats.get(client.sessionId);
     const p = this.state.players.get(client.sessionId);
-    if (seat) this.pending.delete(seat.userId);
+    const authedUser = this.authed.get(client.sessionId);
+    if (authedUser) this.pending.delete(authedUser);
+    this.authed.delete(client.sessionId);
     if (!seat || !p) return;
     if (this.state.phase === 'waiting' || this.state.phase === 'countdown') {
       this.seats.delete(client.sessionId);
