@@ -1,4 +1,4 @@
-import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core';
+import { ClientState, Room, ServerError, type AuthContext, type Client } from '@colyseus/core';
 import { MapSchema, Schema, type } from '@colyseus/schema';
 import { randomInt } from 'node:crypto';
 import { createVerifier } from 'fast-jwt';
@@ -80,6 +80,9 @@ export class DuelRoom extends Room<DuelState> {
       const user = await DuelRoom.deps.prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, displayName: true, character: true, tokenVersion: true, flagged: true } });
       if (!user || (payload.tv ?? 0) !== user.tokenVersion) throw new ServerError(401, 'unauthorized');
       if (user.flagged) throw new ServerError(403, 'flagged');
+      // If the socket closed while we awaited the DB, Colyseus rejects the join without calling onLeave,
+      // so release the guard here (closing is a macrotask; nothing can interleave before Colyseus' check).
+      if (client.state === ClientState.LEAVING) throw new ServerError(4000, 'already_disconnected');
       return { userId: user.id, name: user.displayName, character: user.character };
     } catch (err) {
       this.pending.delete(payload.sub);
