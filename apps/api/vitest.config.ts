@@ -7,6 +7,9 @@ export default defineConfig({
     globalSetup: ['./test/global-setup.ts'],
     env: { DATABASE_URL: TEST_DB },
     fileParallelism: false,
+    // Colyseus treats process.send (present in the forks pool) as a cluster IPC channel; use threads.
+    pool: 'threads',
+    hookTimeout: 30000,
     testTimeout: 20000,
   },
 });

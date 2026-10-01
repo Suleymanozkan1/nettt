@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { LeaderboardQuery } from '@stage/shared';
+import { LeaderboardQuery, isoWeekKey } from '@stage/shared';
 import { parse } from '../errors';
 import { userId } from '../app';
 
@@ -30,11 +30,14 @@ export async function leaderboardRoutes(app: FastifyInstance): Promise<void> {
       const myRank = mine.bestScore > 0 ? (await prisma.user.count({ where: { flagged: false, bestScore: { gt: mine.bestScore } } })) + 1 : null;
       return { period, entries: users.map((u, i) => ({ rank: i + 1, name: u.displayName, score: u.bestScore, character: u.character, me: u.id === me })), myRank, myScore: mine.bestScore };
     }
-    // Weekly: best verified run per player since Monday 00:00 UTC.
+    // Weekly (normal shows since Monday 00:00 UTC) or the weekly challenge (shared seed this week).
     const since = weekStart();
+    const where = period === 'challenge'
+      ? { status: 'FINISHED' as const, mode: 'challenge', challengeWeek: isoWeekKey(), user: { flagged: false } }
+      : { status: 'FINISHED' as const, mode: 'normal', finishedAt: { gte: since }, user: { flagged: false } };
     const rows = await prisma.run.groupBy({
       by: ['userId'],
-      where: { status: 'FINISHED', finishedAt: { gte: since }, user: { flagged: false } },
+      where,
       _max: { score: true },
       orderBy: { _max: { score: 'desc' } },
     });

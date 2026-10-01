@@ -13,6 +13,8 @@ const Env = z.object({
   GUEST_ACCOUNTS_PER_IP_PER_DAY: z.coerce.number().int().positive().default(20),
   /** Only enable behind a reverse proxy you control; otherwise X-Forwarded-For lets clients spoof their IP. */
   TRUST_PROXY: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  /** Bearer token for GET /metrics. Without it the endpoint is only open outside production. */
+  METRICS_TOKEN: z.string().min(16).optional(),
   NODE_ENV: z.string().default('development'),
 });
 

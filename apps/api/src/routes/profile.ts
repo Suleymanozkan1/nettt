@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
-import { DEFAULT_SETTINGS, SettingsBody, playerLevelForFans, fansForPlayerLevel, REVIVE_GEM_COST, type Settings } from '@stage/shared';
+import { DEFAULT_SETTINGS, SettingsBody, OnboardingBody, playerLevelForFans, fansForPlayerLevel, REVIVE_GEM_COST, unlockedStartActs, type Settings } from '@stage/shared';
 import { HttpError, parse } from '../errors';
 import { userId } from '../app';
 
@@ -29,9 +29,18 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       skin: user.skin,
       character: user.character,
       tutorialDone: user.tutorialDone,
+      onboarded: user.onboarded,
+      maxAct: user.maxAct,
+      startActs: unlockedStartActs(user.maxAct),
       settings: { ...DEFAULT_SETTINGS, ...(user.settings as Partial<Settings>) },
       reviveCost: REVIVE_GEM_COST,
     };
+  });
+
+  app.post('/me/onboarding', { onRequest: [app.authenticate] }, async (req) => {
+    const { displayName } = parse(OnboardingBody, req.body);
+    await prisma.user.update({ where: { id: userId(req) }, data: { displayName, onboarded: true } });
+    return { displayName, onboarded: true };
   });
 
   app.patch('/me/settings', { onRequest: [app.authenticate] }, async (req) => {

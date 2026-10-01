@@ -40,6 +40,9 @@ model User {
   tutorialDone  Boolean  @default(false)
   settings      Json     @default("{}")
   flagged       Boolean  @default(false)
+  maxAct        Int      @default(1)
+  tokenVersion  Int      @default(0)
+  onboarded     Boolean  @default(false)
   createdIp     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -51,6 +54,7 @@ model User {
   daily        DailyState?
   missions     MissionProgress[]
   events       Event[]
+  duelWins     DuelMatch[]
 
   @@index([bestScore])
   @@index([createdIp, createdAt])
@@ -62,6 +66,9 @@ model Run {
   seed         Int
   params       Json
   status       RunStatus @default(STARTED)
+  mode         String    @default("normal")
+  challengeWeek String?
+  startAct     Int       @default(1)
   score        Int       @default(0)
   fits         Int       @default(0)
   misses       Int       @default(0)
@@ -79,6 +86,7 @@ model Run {
 
   @@index([userId, startedAt])
   @@index([status, finishedAt, score])
+  @@index([mode, challengeWeek, status, score])
 }
 
 /// Append-only ledger. Every balance change is recorded; (userId, reason, refId, currency) is unique so a
@@ -160,4 +168,31 @@ model EconomyConfig {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+/// A finished live duel (Colyseus). Scores come from the server-side simulation.
+model DuelMatch {
+  id         String   @id @default(cuid())
+  roomId     String   @unique
+  players    Json
+  winnerId   String?
+  createdAt  DateTime @default(now())
+
+  winner User? @relation(fields: [winnerId], references: [id], onDelete: SetNull)
+
+  @@index([winnerId, createdAt])
+}
+
+/// Time-limited special event with reward multipliers (managed from the admin panel).
+model GameEvent {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  startsAt    DateTime
+  endsAt      DateTime
+  fansMult    Float    @default(1)
+  creditsMult Float    @default(1)
+  createdAt   DateTime @default(now())
+
+  @@index([startsAt, endsAt])
 }

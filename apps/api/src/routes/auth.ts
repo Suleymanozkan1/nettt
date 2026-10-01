@@ -19,7 +19,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       user = await prisma.user.create({ data: { deviceIdHash, displayName: `Kuklacı${Math.floor(1000 + Math.random() * 9000)}`, createdIp: req.ip } });
       await track(prisma, user.id, 'signup', { method: 'guest' });
     }
-    return { token: app.jwt.sign({ sub: user.id }) };
+    return { token: app.jwt.sign({ sub: user.id, tv: user.tokenVersion }) };
   });
 
   app.post('/auth/register', strict, async (req) => {
@@ -36,7 +36,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       ? await prisma.user.update({ where: { id: guestId }, data: { email, passwordHash, ...(body.displayName ? { displayName: body.displayName } : {}) } })
       : await prisma.user.create({ data: { email, passwordHash, displayName: body.displayName ?? email.split('@')[0]!.slice(0, 20), createdIp: req.ip } });
     await track(prisma, user.id, 'signup', { method: 'email', upgradedGuest: !!guestId });
-    return { token: app.jwt.sign({ sub: user.id }) };
+    return { token: app.jwt.sign({ sub: user.id, tv: user.tokenVersion }) };
+  });
+
+  app.post('/auth/logout-all', { onRequest: [app.authenticate] }, async (req) => {
+    await prisma.user.update({ where: { id: req.user.sub }, data: { tokenVersion: { increment: 1 } } });
+    return { ok: true };
   });
 
   app.post('/auth/login', strict, async (req) => {
@@ -44,6 +49,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const user = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
     const ok = user?.passwordHash ? await verifyPassword(body.password, user.passwordHash) : false;
     if (!user || !ok) throw new HttpError(401, 'invalid_credentials');
-    return { token: app.jwt.sign({ sub: user.id }) };
+    return { token: app.jwt.sign({ sub: user.id, tv: user.tokenVersion }) };
   });
 }

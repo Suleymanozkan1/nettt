@@ -42,9 +42,33 @@ export interface RunParams {
   toleranceLevel: number;
   /** Upgrade level 0-2: extra starting spotlights (lives). */
   encoreLevel: number;
+  /** Act the show starts at (level select). Older stored runs have no value → act 1. */
+  startAct?: number;
 }
 
-export const DEFAULT_PARAMS: RunParams = { toleranceLevel: 0, encoreLevel: 0 };
+export const DEFAULT_PARAMS: RunParams = { toleranceLevel: 0, encoreLevel: 0, startAct: 1 };
+
+/** Acts a player may start from once they have reached them in an earlier show. */
+export const START_ACTS = [1, 6, 11] as const;
+
+export function unlockedStartActs(maxActReached: number): number[] {
+  return START_ACTS.filter((a) => a <= maxActReached);
+}
+
+// ---- Weekly challenge: everyone plays the same seed with default params for one ISO week ----
+export const CHALLENGE_ATTEMPTS_PER_DAY = 5;
+
+// ---- Live duel (Colyseus) ----
+export const DUEL_MIN_PLAYERS = 2;
+export const DUEL_MAX_PLAYERS = 4;
+export const DUEL_COUNTDOWN_MS = 4000;
+export const DUEL_MAX_MS = 3 * 60 * 1000;
+/** A tap may be stamped at most this far ahead of the server's own clock (latency/jitter allowance). */
+export const DUEL_TAP_LEAD_MS = 300;
+/** Taps older than this (relative to the server clock) are rejected: no hoarding inputs. */
+export const DUEL_TAP_LAG_MS = 2000;
+export const DUEL_WIN_CREDITS = 30;
+export const DUEL_REWARDED_WINS_PER_DAY = 3;
 
 export function levelForRounds(rounds: number): number {
   return Math.floor(rounds / ROUNDS_PER_LEVEL) + 1;

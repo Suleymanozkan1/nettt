@@ -13,6 +13,8 @@ import { runRoutes } from './routes/runs';
 import { economyRoutes } from './routes/economy';
 import { leaderboardRoutes } from './routes/leaderboard';
 import { adminRoutes } from './routes/admin';
+import { eventRoutes } from './routes/events';
+import { metrics, registry } from './metrics';
 
 export interface AppDeps { prisma: PrismaClient; config: Config; redis?: Redis; logger?: boolean }
 
@@ -23,7 +25,7 @@ declare module 'fastify' {
   }
 }
 declare module '@fastify/jwt' {
-  interface FastifyJWT { payload: { sub: string }; user: { sub: string } }
+  interface FastifyJWT { payload: { sub: string; tv: number }; user: { sub: string; tv: number } }
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -36,7 +38,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   await app.register(helmet);
   const origins = deps.config.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean);
-  await app.register(cors, { origin: origins, methods: ['GET', 'POST', 'PATCH'] });
+  await app.register(cors, { origin: origins, methods: ['GET', 'POST', 'PATCH', 'DELETE'] });
   await app.register(jwt, { secret: deps.config.JWT_SECRET, sign: { expiresIn: '30d' } });
   await app.register(rateLimit, {
     max: deps.config.RATE_LIMIT_PER_MIN,
@@ -52,6 +54,20 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     } catch {
       throw new HttpError(401, 'unauthorized');
     }
+    // Revocation: tokens carry the user's tokenVersion; "log out everywhere" bumps it.
+    const user = await deps.prisma.user.findUnique({ where: { id: req.user.sub }, select: { tokenVersion: true } });
+    if (!user || user.tokenVersion !== (req.user.tv ?? 0)) throw new HttpError(401, 'unauthorized');
+  });
+
+  app.addHook('onResponse', async (req, reply) => {
+    metrics.httpRequests.inc({ route: req.routeOptions.url ?? 'unknown', status: String(reply.statusCode) });
+  });
+  app.get('/metrics', async (req, reply) => {
+    const token = deps.config.METRICS_TOKEN;
+    const ok = token ? req.headers.authorization === `Bearer ${token}` : deps.config.NODE_ENV !== 'production';
+    if (!ok) throw new HttpError(404, 'not_found');
+    reply.header('content-type', registry.contentType);
+    return registry.metrics();
   });
 
   app.setErrorHandler((err: unknown, req, reply) => {
@@ -74,6 +90,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(economyRoutes);
   await app.register(leaderboardRoutes);
   await app.register(adminRoutes);
+  await app.register(eventRoutes);
   return app;
 }
 

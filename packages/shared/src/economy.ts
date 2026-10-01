@@ -10,10 +10,15 @@ export const RUN_CREDIT_CAP = 500;
 
 export interface RunRewards { fans: number; credits: number; gems: number }
 
-export function computeRunRewards(s: RunSummary): RunRewards {
+export interface RewardMultipliers { fans: number; credits: number }
+
+/** Special events may boost fans/credits (bounded to ×1–×3). Gems are never multiplied. */
+export function computeRunRewards(s: RunSummary, mult: RewardMultipliers = { fans: 1, credits: 1 }): RunRewards {
+  const clamp = (m: number) => Math.min(3, Math.max(1, m));
+  const credits = Math.floor((Math.floor(s.score / 2) + 20 * s.bossCleared) * clamp(mult.credits));
   return {
-    fans: s.fits + 2 * s.perfects + 25 * s.bossCleared,
-    credits: Math.min(RUN_CREDIT_CAP, Math.floor(s.score / 2) + 20 * s.bossCleared),
+    fans: Math.floor((s.fits + 2 * s.perfects + 25 * s.bossCleared) * clamp(mult.fans)),
+    credits: Math.min(RUN_CREDIT_CAP, credits),
     gems: s.bossCleared,
   };
 }

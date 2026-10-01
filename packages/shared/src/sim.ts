@@ -1,7 +1,7 @@
 import { createRng } from './rng';
 import {
   BOSS_DRIFT_PERIOD, BOSS_DRIFT_X, COMBO_SCORE_CAP, GOOD_ERROR, HOLE_SWING_LIMIT, MAX_INPUTS, MAX_REVIVES,
-  MAX_RUN_MS, MAX_SWING, REVIVE_DELAY_MS, ROUND_DELAY_MS, SCALE_TOLERANCE, SHAPES, X_TOLERANCE, isBossLevel,
+  MAX_RUN_MS, MAX_SWING, REVIVE_DELAY_MS, ROUND_DELAY_MS, ROUNDS_PER_LEVEL, SCALE_TOLERANCE, SHAPES, X_TOLERANCE, isBossLevel,
   levelForRounds, omegaForLevel, perfectError, roundTimeMs, shadowScale, shadowX, startLives, wobbleForLevel,
   type RunParams, type ShapeId,
 } from './rules';
@@ -71,6 +71,7 @@ export class RunSim {
   constructor(seed: number, readonly params: RunParams) {
     this.rng = createRng(seed);
     this.lives = startLives(params);
+    this.rounds = (Math.max(1, params.startAct ?? 1) - 1) * ROUNDS_PER_LEVEL;
     this.round = this.makeRound(0);
   }
 

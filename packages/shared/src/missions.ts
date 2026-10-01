@@ -58,3 +58,15 @@ export function utcDay(d: Date = new Date()): string {
 export function dayDiff(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 }
+
+/** Monday (UTC) of the ISO week containing d, as YYYY-MM-DD. Identifies the weekly challenge. */
+export function isoWeekKey(d: Date = new Date()): string {
+  const day = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
+  return day.toISOString().slice(0, 10);
+}
+
+/** The weekly challenge seed: identical for every player during the week. */
+export function challengeSeed(week: string): number {
+  return hashString(`golge-challenge:${week}`) & 0x7fffffff;
+}
