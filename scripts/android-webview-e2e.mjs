@@ -17,6 +17,9 @@ if (await onboard.isVisible()) {
   await onboard.click();
 }
 await page.getByTestId('play').waitFor({ timeout: 30_000 });
+// Reload with the read-only debug hook so we can count taps the game actually accepted.
+await page.goto(new URL('/?debug=1', page.url()).toString());
+await page.getByTestId('play').waitFor({ timeout: 60_000 });
 await device.screenshot({ path: `${OUT}/10-home.png` });
 await page.getByTestId('play').click();
 await page.getByTestId('pause').waitFor({ timeout: 30_000 });
@@ -25,12 +28,13 @@ await page.getByTestId('pause').waitFor({ timeout: 30_000 });
 const size = /(\d+)x(\d+)/.exec((await device.shell('wm size')).toString());
 const [w, h] = size ? [Number(size[1]), Number(size[2])] : [320, 640];
 for (let i = 0; i < 6; i++) {
-  await device.tap({ x: Math.round(w / 2), y: Math.round(h * 0.62) });
+  await device.input.tap({ x: Math.round(w / 2), y: Math.round(h * 0.62) });
   await page.waitForTimeout(1100);
 }
 await device.screenshot({ path: `${OUT}/11-playing.png` });
-const score = await page.getByTestId('score').textContent();
-console.log('hud score after taps:', score);
+const state = await page.evaluate(() => window.__stage.state());
+console.log('after OS touches:', JSON.stringify(state));
+if (!state || state.taps < 1) throw new Error('no OS touch reached the game');
 
 await page.getByTestId('pause').click();
 await page.getByRole('button', { name: /Gösteriyi bitir/ }).click();

@@ -24,7 +24,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars)}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       # Only the compose network (Caddy) may set X-Forwarded-For; the API port is bound to localhost below.
-      TRUST_PROXY: ${TRUST_PROXY:-172.16.0.0/12}
+      TRUST_PROXY: ${TRUST_PROXY:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
       METRICS_TOKEN: ${METRICS_TOKEN:-local-metrics-token-change-me}
     ports: ["127.0.0.1:3000:3000"]
     depends_on:

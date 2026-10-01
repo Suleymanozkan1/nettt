@@ -53,7 +53,7 @@ if grep -q 'eyJhbGci' "$OUT/shared_prefs.txt"; then echo "FAIL: plaintext JWT in
 echo "== deep link: golgekuklaci://duel/<code> opens the app's duel invite flow"
 adb shell am start -a android.intent.action.VIEW -d "golgekuklaci://duel/TestInvite01" "$PKG" | tee "$OUT/deeplink.txt"
 sleep 6; shot 06-deeplink; alive
-! grep -qi "error" "$OUT/deeplink.txt"
+if grep -qi "error" "$OUT/deeplink.txt"; then echo "FAIL: deep link not handled"; exit 1; fi
 
 echo "== frame stats"
 adb shell dumpsys gfxinfo "$PKG" > "$OUT/gfxinfo.txt"
