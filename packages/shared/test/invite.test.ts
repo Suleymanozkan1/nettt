@@ -11,7 +11,7 @@ describe('duel invite links', () => {
     for (const bad of [
       'golgekuklaci://shop/AbC123', 'golgekuklaci://duel/', 'golgekuklaci://duel/a', 'golgekuklaci://duel/<script>',
       'golgekuklaci://duel/..%2F..%2Fadmin', 'javascript:alert(1)', 'https://x.io/?duel=' + 'a'.repeat(40),
-      'https://x.io/?duel=abc%20def', 'not a url', 'file:///etc/passwd?duel=abcd', '',
+      'https://x.io/?duel=abc%20def', 'golgekuklaci://duel/%E0%A4%A', 'not a url', 'file:///etc/passwd?duel=abcd', '',
     ]) expect(parseInviteUrl(bad)).toBeNull();
   });
   it('builds links that round-trip', () => {

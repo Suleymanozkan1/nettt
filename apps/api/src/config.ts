@@ -12,7 +12,8 @@ const Env = z.object({
   AUTH_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(10),
   GUEST_ACCOUNTS_PER_IP_PER_DAY: z.coerce.number().int().positive().default(20),
   /** Only enable behind a reverse proxy you control; otherwise X-Forwarded-For lets clients spoof their IP. */
-  TRUST_PROXY: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  /** 'false' (default), 'true', or a comma-separated list of trusted proxy IPs/CIDRs (preferred). */
+  TRUST_PROXY: z.string().default('false').transform((v): boolean | string => (v === 'true' ? true : v === 'false' ? false : v)),
   /** Bearer token for GET /metrics. Without it the endpoint is only open outside production. */
   METRICS_TOKEN: z.string().min(16).optional(),
   /** Proof-of-work difficulty (leading zero bits) for creating/logging in guest accounts. */

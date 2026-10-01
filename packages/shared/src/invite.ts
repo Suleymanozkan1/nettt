@@ -16,7 +16,7 @@ export function parseInviteUrl(raw: string): string | null {
   if (url.protocol === `${INVITE_SCHEME}:`) {
     // golgekuklaci://duel/CODE → host "duel", pathname "/CODE"
     if (url.hostname !== 'duel') return null;
-    code = decodeURIComponent(url.pathname.replace(/^\//, ''));
+    try { code = decodeURIComponent(url.pathname.replace(/^\//, '')); } catch { return null; }
   } else if (url.protocol === 'https:' || url.protocol === 'http:') {
     code = url.searchParams.get('duel');
   } else {

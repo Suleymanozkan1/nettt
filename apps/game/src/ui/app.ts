@@ -40,6 +40,8 @@ export class App {
   /** Opens the duel lobby for an invite code coming from a deep link or ?duel= web link. */
   openInvite(code: string): void {
     if (!INVITE_CODE.test(code)) return;
+    // An invite interrupts whatever is running: a solo show is abandoned (the server closes it later).
+    if (this.run && this.run.mode !== 'duel') { this.scene.stop(); this.run = null; }
     void this.leaveDuel();
     this.duelJoin = { kind: 'code', code };
     this.show('duel');
@@ -91,6 +93,7 @@ export class App {
   }
 
   show(screen: Screen): void {
+    if (screen === 'home') this.duelJoin = { kind: 'quick' }; // any way back home ends invite mode
     void this.menu3d(screen === 'home' || screen === 'onboarding');
     this.root.replaceChildren();
     this.root.dataset.screen = screen;

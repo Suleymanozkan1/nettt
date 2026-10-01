@@ -283,6 +283,18 @@ describe('circuit breaker override', () => {
 });
 
 describe('rate limiting & security headers', () => {
+  it('behind a trusted proxy (CIDR list) each client gets its own rate-limit bucket', async () => {
+    const proxied = await makeApp({ AUTH_RATE_LIMIT_PER_MIN: '2', TRUST_PROXY: '127.0.0.1' });
+    const codes = [];
+    for (let i = 0; i < 4; i++) codes.push((await proxied.inject({ method: 'POST', url: '/auth/login', remoteAddress: '127.0.0.1', headers: { 'x-forwarded-for': `203.0.113.${i}` }, payload: { email: 'n@x.io', password: 'x' } })).statusCode);
+    expect(codes).toEqual([401, 401, 401, 401]);
+    // An untrusted hop cannot do the same.
+    const direct = [];
+    for (let i = 0; i < 3; i++) direct.push((await proxied.inject({ method: 'POST', url: '/auth/login', remoteAddress: '198.51.100.7', headers: { 'x-forwarded-for': `203.0.113.${50 + i}` }, payload: { email: 'n@x.io', password: 'x' } })).statusCode);
+    expect(direct).toEqual([401, 401, 429]);
+    await proxied.close();
+  });
+
   it('does not trust X-Forwarded-For by default (no IP spoofing past limits)', async () => {
     const limited = await makeApp({ AUTH_RATE_LIMIT_PER_MIN: '2' });
     const codes = [];

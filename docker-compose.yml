@@ -23,9 +23,10 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars)}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
-      TRUST_PROXY: ${TRUST_PROXY:-false}
+      # Only the compose network (Caddy) may set X-Forwarded-For; the API port is bound to localhost below.
+      TRUST_PROXY: ${TRUST_PROXY:-172.16.0.0/12}
       METRICS_TOKEN: ${METRICS_TOKEN:-local-metrics-token-change-me}
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:3000:3000"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -40,7 +41,7 @@ services:
       # Shared presence/driver: run several realtime replicas behind a load balancer.
       REDIS_URL: redis://redis:6379
       METRICS_TOKEN: ${METRICS_TOKEN:-local-metrics-token-change-me}
-    ports: ["2567:2567"]
+    ports: ["127.0.0.1:2567:2567"]
     depends_on: [api]
   backup:
     image: postgres:16-alpine

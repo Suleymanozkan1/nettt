@@ -90,6 +90,8 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
           data: { status: 'FINISHED', finishedAt: new Date(), ...summary },
         });
         if (flipped.count !== 1) throw new HttpError(409, 'run_already_submitted');
+        // Serialise this player's finishes so the daily counters below cannot be read concurrently.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`finish:${uid}`}))`;
         // Daily pacing: today's earlier verified shows and show-gems (transparent "tired audience" rule).
         const [showsBefore, gemsAgg] = await Promise.all([
           tx.run.count({ where: { userId: uid, status: 'FINISHED', finishedAt: { gte: dayStart }, id: { not: run.id } } }),
