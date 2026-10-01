@@ -4,6 +4,8 @@ on:
   push:
     branches: [main, 'claude/**']
   pull_request:
+    # Review-only PRs (partial trees split for CodeRabbit's file limit) are not built; the branch push runs CI.
+    branches-ignore: [coderabbit-base, 'review/**']
 
 jobs:
   checks:
