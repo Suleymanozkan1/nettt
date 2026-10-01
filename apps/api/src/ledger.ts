@@ -38,11 +38,12 @@ export async function rewardsPaused(prisma: PrismaClient, limit: number): Promis
   const row = await prisma.economyConfig.findUnique({ where: { key: BREAKER_KEY } });
   const value = row?.value as { paused?: boolean; by?: string } | null;
   let paused = value?.paused === true;
-  // An admin decision made within the last 24h wins over the automatic check, so an admin can
-  // resume rewards after investigating an auto-trip (the 24h sum would otherwise re-trip it).
-  const adminOverride = !!row && value?.by?.startsWith('admin:') === true && Date.now() - row.updatedAt.getTime() < 86_400_000;
-  if (!paused && !adminOverride) {
-    const since = new Date(Date.now() - 86_400_000);
+  if (!paused) {
+    // After an admin decision, only count grants made since then: the admin can resume rewards after an
+    // auto-trip, and a still-running exploit trips the breaker again once it mints past the limit.
+    const dayAgo = new Date(Date.now() - 86_400_000);
+    const adminAt = row && value?.by?.startsWith('admin:') ? row.updatedAt : null;
+    const since = adminAt && adminAt > dayAgo ? adminAt : dayAgo;
     const agg = await prisma.transaction.aggregate({ _sum: { amount: true }, where: { currency: 'credits', amount: { gt: 0 }, createdAt: { gte: since }, reason: { in: REWARD_REASONS } } });
     if ((agg._sum.amount ?? 0) > limit) {
       paused = true;

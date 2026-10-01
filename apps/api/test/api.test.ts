@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { computeRunRewards, REVIVE_GEM_COST, utcDay } from '@stage/shared';
 import { backdateRun, guest, makeApp, playInputs, prisma, resetDb } from './helpers';
+import { clearBreakerCache } from '../src/ledger';
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await makeApp(); });
@@ -234,6 +235,9 @@ describe('circuit breaker override', () => {
     await tight.inject({ method: 'POST', url: '/admin/economy', headers: a.headers, payload: { paused: false } });
     expect((await tight.inject({ method: 'GET', url: '/admin/economy', headers: a.headers })).json().rewardsPaused).toBe(false);
     expect((await tight.inject({ method: 'POST', url: '/daily/claim', headers: a.headers })).statusCode).toBe(200);
+    // The 50-credit daily grant after the resume exceeds the limit again → breaker re-trips.
+    clearBreakerCache();
+    expect((await tight.inject({ method: 'GET', url: '/admin/economy', headers: a.headers })).json().rewardsPaused).toBe(true);
     await tight.close();
   });
 });
