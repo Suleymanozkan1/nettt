@@ -3,11 +3,12 @@ import { expect, test, type Page } from '@playwright/test';
 type DebugState = { state: string; score: number; fits: number; misses: number; taps: number; msToPerfect: number | null } | null;
 const debug = (page: Page) => page.evaluate(() => (window as unknown as { __stage: { state: () => DebugState } }).__stage.state());
 
-test('offline edition: no server at all, full progression stored on the device', async ({ page }) => {
+test('offline edition: no server at all, full progression stored on the device', async ({ page, baseURL }) => {
+  const origin = new URL(baseURL!).origin;
   const remote: string[] = [];
-  page.on('request', (r) => { if (!r.url().startsWith('http://localhost:4174') && !r.url().startsWith('data:') && !r.url().startsWith('blob:')) remote.push(r.url()); });
+  page.on('request', (r) => { if (!r.url().startsWith(origin) && !r.url().startsWith('data:') && !r.url().startsWith('blob:')) remote.push(r.url()); });
 
-  await page.goto('/?debug=1');
+  await page.goto('./?debug=1');
   await page.getByTestId('name-input').fill('Yolcu');
   await page.getByTestId('onboard').click();
   await expect(page.getByTestId('offline-edition')).toBeVisible();
@@ -16,8 +17,10 @@ test('offline edition: no server at all, full progression stored on the device',
   // Safe areas: insets injected by the Android shell (--native-*) drive the layout padding.
   const insets = () => page.evaluate(() => (window as unknown as { __stage: { insets: () => string[] } }).__stage.insets());
   expect(await insets()).toEqual(['0px', '0px', '0px', '0px']);
-  await page.evaluate(() => document.documentElement.style.setProperty('--native-sat', '31px'));
-  expect((await insets())[0]).toBe('31px');
+  await expect.poll(async () => {
+    await page.evaluate(() => document.documentElement.style.setProperty('--native-sat', '31px'));
+    return (await insets())[0];
+  }).toBe('31px');
   await page.evaluate(() => document.documentElement.style.removeProperty('--native-sat'));
 
   // Daily reward pays immediately from local state.

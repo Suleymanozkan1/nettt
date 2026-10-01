@@ -8,7 +8,7 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
@@ -37,6 +37,7 @@ jobs:
       - name: Create test database
         run: PGPASSWORD=stage psql -h localhost -U stage -d stagestack_dev -c 'CREATE DATABASE stagestack_ci'
       - run: pnpm --filter @stage/api exec prisma generate
+      - run: pnpm audit --prod --audit-level=moderate
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm --filter @stage/api exec prisma migrate deploy
@@ -45,6 +46,18 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e
       - run: pnpm e2e:offline
+      - name: DAST - OWASP ZAP baseline scan of the API and the game page
+        run: |
+          nohup pnpm --filter @stage/api start > zap-api.log 2>&1 &
+          nohup pnpm --filter @stage/game preview > zap-game.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:3000/health >/dev/null && curl -sf localhost:4173 >/dev/null && break; sleep 2; done
+          mkdir -p test-results/zap && chmod 777 test-results/zap
+          for target in http://localhost:3000/health http://localhost:4173/; do
+            name=$(echo "$target" | tr -c 'a-z0-9' '_')
+            docker run --rm --network host -v "$PWD/test-results/zap:/zap/wrk:rw" mirror.gcr.io/zaproxy/zaproxy:stable \
+              zap-baseline.py -t "$target" -r "$name.html" -w "$name.md" -I
+          done
+          grep -h "FAIL-NEW\|WARN-NEW" test-results/zap/*.md | head -40 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: playwright, path: test-results, if-no-files-found: ignore }
@@ -85,9 +98,24 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @stage/game build
-      - run: cd apps/game && npx cap sync ios
-      - run: bash scripts/ios-smoke.sh
+      - name: TLS test hosts for certificate pinning (the simulator shares the Mac's network)
+        run: |
+          echo "127.0.0.1 golge-pin.test golge-badpin.test" | sudo tee -a /etc/hosts
+          OSSL="$(brew --prefix openssl@3)/bin/openssl"
+          "$OSSL" req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=golge-ci -keyout tls.key -out tls.crt \
+            -addext "subjectAltName=DNS:golge-pin.test,DNS:golge-badpin.test" -addext "extendedKeyUsage=serverAuth"
+          echo "PIN=$("$OSSL" x509 -in tls.crt -pubkey -noout | "$OSSL" pkey -pubin -outform der | "$OSSL" dgst -sha256 -binary | base64)" >> "$GITHUB_ENV"
+          echo "BACKUP_PIN=$("$OSSL" rand 32 | base64)" >> "$GITHUB_ENV"
+          nohup node scripts/tls-proxy.mjs tls.key tls.crt 8443 > tls-proxy.log 2>&1 &
+          sleep 2 && curl -s --cacert tls.crt -o /dev/null -w 'tls proxy: %{http_code}\n' https://golge-pin.test:8443/health
+      - name: Build the pinned iOS app (ATS NSPinnedDomains + pin self-test)
+        env: { VITE_PIN_SELFTEST: 'https://golge-pin.test:8443/health,https://golge-badpin.test:8443/health' }
+        run: |
+          pnpm --filter @stage/game build
+          cd apps/game
+          PIN_DOMAINS=golge-pin.test PIN_SHA256="$PIN,$BACKUP_PIN" PIN_TEST_BAD_DOMAINS=golge-badpin.test node scripts/network-config.mjs
+          PIN_DOMAINS=golge-pin.test npx cap sync ios
+      - run: TLS_CERT="$GITHUB_WORKSPACE/tls.crt" bash scripts/ios-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: ios-simulator, path: test-results/ios, if-no-files-found: ignore }

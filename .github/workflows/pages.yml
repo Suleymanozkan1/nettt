@@ -30,3 +30,26 @@ jobs:
           publish_branch: gh-pages
           force_orphan: true
           commit_message: 'pages: offline edition'
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Wait until the published site serves this build
+        run: |
+          URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          git fetch -q --depth 1 origin gh-pages && JS=$(git show FETCH_HEAD:index.html | grep -o 'assets/main-[^"]*\.js')
+          for i in $(seq 1 60); do curl -s "$URL" | grep -q "$JS" && break; sleep 10; done
+          curl -s "$URL" | grep -q "$JS"
+          echo "PAGES_URL=${URL,,}" >> "$GITHUB_ENV"
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Play the live site (offline edition e2e against GitHub Pages)
+        run: pnpm e2e:offline
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: pages-live, path: test-results, if-no-files-found: ignore }

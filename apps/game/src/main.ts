@@ -49,6 +49,9 @@ if (Capacitor.isNativePlatform()) {
   });
 }
 
+const pinSelftest = import.meta.env.VITE_PIN_SELFTEST as string | undefined;
+if (pinSelftest) void import('./lib/pin-selftest').then((m) => m.runPinSelftest(pinSelftest.split(',')));
+
 if (new URLSearchParams(location.search).has('debug')) {
   (window as unknown as { __stage: unknown }).__stage = {
     state: () => scene()?.debugState() ?? null,

@@ -1,4 +1,6 @@
-// Generates android/app/src/main/res/xml/network_security_config.xml from the build environment.
+// Generates the platform pinning config from the build environment:
+//   Android: android/app/src/main/res/xml/network_security_config.xml
+//   iOS:     NSAppTransportSecurity/NSPinnedDomains in ios/App/App/Info.plist (between generated markers)
 //   PIN_DOMAINS      comma-separated API hosts to pin (e.g. api.example.com)
 //   PIN_SHA256       comma-separated base64 SPKI SHA-256 pins (primary + backup); required with PIN_DOMAINS
 //   PIN_EXPIRES      optional pin-set expiration (YYYY-MM-DD); after it the pins are not enforced
@@ -7,11 +9,12 @@
 //   CAP_DEV_CLEARTEXT=1  emulator/CI builds that talk to a local http API
 // Pins are enforced for the app's HTTP requests, which go through the native stack (CapacitorHttp is enabled
 // whenever pins are configured; see capacitor.config.ts).
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'android', 'app', 'src', 'main', 'res');
+const app = join(dirname(fileURLToPath(import.meta.url)), '..');
+const root = join(app, 'android', 'app', 'src', 'main', 'res');
 const list = (v) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 const domains = list(process.env.PIN_DOMAINS);
 const pins = list(process.env.PIN_SHA256);
@@ -42,3 +45,21 @@ ${domains.length ? `  <domain-config cleartextTrafficPermitted="false">${domainX
 mkdirSync(join(root, 'xml'), { recursive: true });
 writeFileSync(join(root, 'xml', 'network_security_config.xml'), xml);
 console.log(`network-config: ${domains.length ? `pinned ${domains.join(', ')}` : 'no pins'}${bad.length ? `; wrong pin for ${bad.join(', ')}` : ''}; cleartext ${cleartext ? 'allowed (dev)' : 'off'}`);
+
+// ---------- iOS: App Transport Security pins (URLSession, used by CapacitorHttp) ----------
+const plistPath = join(app, 'ios', 'App', 'App', 'Info.plist');
+if (existsSync(plistPath)) {
+  const BEGIN = '\t<!-- pins:generated -->';
+  const END = '\t<!-- /pins:generated -->';
+  const iosDomain = (d, values) => `\t\t\t<key>${d}</key>\n\t\t\t<dict>\n\t\t\t\t<key>NSIncludesSubdomains</key>\n\t\t\t\t<true/>\n\t\t\t\t<key>NSPinnedLeafIdentities</key>\n\t\t\t\t<array>\n${values.map((p) => `\t\t\t\t\t<dict>\n\t\t\t\t\t\t<key>SPKI-SHA256-BASE64</key>\n\t\t\t\t\t\t<string>${p}</string>\n\t\t\t\t\t</dict>\n`).join('')}\t\t\t\t</array>\n\t\t\t</dict>\n`;
+  let plist = readFileSync(plistPath, 'utf8');
+  const s0 = plist.indexOf(BEGIN);
+  if (s0 >= 0) plist = plist.slice(0, s0) + plist.slice(plist.indexOf(END) + END.length + 1);
+  if (domains.length || bad.length) {
+    const block = `${BEGIN}\n\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSPinnedDomains</key>\n\t\t<dict>\n${domains.map((d) => iosDomain(d, pins)).join('')}${bad.map((d) => iosDomain(d, [WRONG])).join('')}\t\t</dict>\n\t</dict>\n${END}\n`;
+    const at = plist.lastIndexOf('</dict>');
+    plist = plist.slice(0, at) + block + plist.slice(at);
+  }
+  writeFileSync(plistPath, plist);
+  console.log(`network-config (iOS): ${domains.length ? `pinned ${domains.join(', ')}` : 'no pins'}`);
+}

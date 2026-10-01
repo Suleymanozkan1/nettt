@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Build the Capacitor iOS app for the simulator, install, launch and screenshot it (CI on macOS).
+# With TLS_CERT set (pinned build with VITE_PIN_SELFTEST), also checks ATS certificate pinning:
+# the pinned host must answer, the host pinned to a wrong key must be refused.
 set -euo pipefail
 OUT=test-results/ios
 mkdir -p "$OUT"
+OUT_ABS=$(cd "$OUT" && pwd)
 cd apps/game/ios/App
 xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug -sdk iphonesimulator \
   -derivedDataPath build CODE_SIGNING_ALLOWED=NO | tail -5
@@ -19,8 +22,16 @@ echo "simulator: $DEVICE"
 xcrun simctl boot "$DEVICE" || true
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$APP"
-xcrun simctl launch "$DEVICE" com.golgekuklaci.game
+if [ -n "${TLS_CERT:-}" ]; then xcrun simctl keychain "$DEVICE" add-root-cert "$TLS_CERT"; fi
+xcrun simctl launch --terminate-running-process --stdout="$OUT_ABS/app-stdout.txt" --stderr="$OUT_ABS/app-stderr.txt" "$DEVICE" com.golgekuklaci.game
 sleep 25
 xcrun simctl io "$DEVICE" screenshot "../../../../$OUT/01-launch.png"
 xcrun simctl spawn "$DEVICE" launchctl list | grep -i golgekuklaci | tee "../../../../$OUT/process.txt"
+if [ -n "${TLS_CERT:-}" ]; then
+  for i in $(seq 1 30); do grep -q "PIN_SELFTEST DONE" "$OUT_ABS"/app-std*.txt 2>/dev/null && break; sleep 2; done
+  grep -h "PIN_SELFTEST" "$OUT_ABS"/app-std*.txt | tee "$OUT_ABS/pinning.txt"
+  grep -q "golge-pin.test.* -> ok " "$OUT_ABS/pinning.txt" || { echo "FAIL: pinned host not reachable"; exit 1; }
+  grep -q "golge-badpin.test.* -> error" "$OUT_ABS/pinning.txt" || { echo "FAIL: wrong-pin host was not refused"; exit 1; }
+  echo "iOS certificate pinning: PASS"
+fi
 echo "IOS SMOKE PASS"
