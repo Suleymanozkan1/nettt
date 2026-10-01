@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#120d0a" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:3000 http://10.0.2.2:3000 http://localhost:2567 http://10.0.2.2:2567 ws://localhost:2567 ws://10.0.2.2:2567 https: wss:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; script-src 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src %CONNECT_SRC%; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <title>Gölge Kuklacı</title>
   </head>
   <body>

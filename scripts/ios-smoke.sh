@@ -23,15 +23,17 @@ xcrun simctl boot "$DEVICE" || true
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$APP"
 if [ -n "${TLS_CERT:-}" ]; then xcrun simctl keychain "$DEVICE" add-root-cert "$TLS_CERT"; fi
-xcrun simctl launch --terminate-running-process --stdout="$OUT_ABS/app-stdout.txt" --stderr="$OUT_ABS/app-stderr.txt" "$DEVICE" com.golgekuklaci.game
+SIMCTL_CHILD_NSUnbufferedIO=YES xcrun simctl launch --terminate-running-process --stdout="$OUT_ABS/app-stdout.txt" --stderr="$OUT_ABS/app-stderr.txt" "$DEVICE" com.golgekuklaci.game
 sleep 25
 xcrun simctl io "$DEVICE" screenshot "../../../../$OUT/01-launch.png"
 xcrun simctl spawn "$DEVICE" launchctl list | grep -i golgekuklaci | tee "../../../../$OUT/process.txt"
 if [ -n "${TLS_CERT:-}" ]; then
-  for i in $(seq 1 30); do grep -q "PIN_SELFTEST DONE" "$OUT_ABS"/app-std*.txt 2>/dev/null && break; sleep 2; done
-  grep -h "PIN_SELFTEST" "$OUT_ABS"/app-std*.txt | tee "$OUT_ABS/pinning.txt"
-  grep -q "golge-pin.test.* -> ok " "$OUT_ABS/pinning.txt" || { echo "FAIL: pinned host not reachable"; exit 1; }
-  grep -q "golge-badpin.test.* -> error" "$OUT_ABS/pinning.txt" || { echo "FAIL: wrong-pin host was not refused"; exit 1; }
+  # The app reports its results to the pinned host; the CI TLS proxy logs every request line (TLS_PROXY_LOG).
+  for i in $(seq 1 45); do grep -q "__pin_selftest" "$TLS_PROXY_LOG" 2>/dev/null && break; sleep 2; done
+  { grep -h "PIN_SELFTEST" "$OUT_ABS"/app-std*.txt || true; grep "golge" "$TLS_PROXY_LOG" || true; } | tee "$OUT_ABS/pinning.txt"
+  grep -q "__pin_selftest.*golge-pin.test -> ok " "$OUT_ABS/pinning.txt" || { echo "FAIL: pinned host not reachable"; exit 1; }
+  grep -q "__pin_selftest.*golge-badpin.test -> error" "$OUT_ABS/pinning.txt" || { echo "FAIL: wrong-pin host was not refused"; exit 1; }
+  if grep -q "^[A-Z]* golge-badpin.test" "$OUT_ABS/pinning.txt"; then echo "FAIL: a request reached the wrong-pin host"; exit 1; fi
   echo "iOS certificate pinning: PASS"
 fi
 echo "IOS SMOKE PASS"
