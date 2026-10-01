@@ -37,8 +37,13 @@ const state = await page.evaluate(() => window.__stage.state());
 console.log('after OS touches:', JSON.stringify(state));
 if (!state || state.taps < 1) throw new Error('no OS touch reached the game');
 
-await page.getByTestId('pause').click({ force: true });
-await page.getByRole('button', { name: /Gösteriyi bitir/ }).click({ force: true });
+// Blind taps usually miss: the show may already be over (lives 0). Otherwise end it from the pause menu.
+if (state.state === 'dead') {
+  await page.getByTestId('results').click({ force: true });
+} else {
+  await page.getByTestId('pause').click({ force: true });
+  await page.getByRole('button', { name: /Gösteriyi bitir/ }).click({ force: true });
+}
 await page.getByTestId('verified').waitFor({ timeout: 30_000 });
 const final = await page.getByTestId('final-score').textContent();
 console.log('server-verified final score:', final);
