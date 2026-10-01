@@ -13,21 +13,6 @@ users() { psql "$DATABASE_URL" -tAc 'select count(*) from "User"'; }
 runs() { psql "$DATABASE_URL" -tAc 'select count(*) from "Run"'; }
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
 alive() { adb shell pidof "$PKG" >/dev/null; }
-tap_text() { # tap the centre of the first accessibility node whose text/desc matches $1 (WebView exposes DOM nodes)
-  ADB_TIMEOUT=25 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || return 1
-  adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null 2>&1 || return 1
-  python3 - "$1" "$OUT/ui.xml" <<'PY' | xargs -r adb shell input tap
-import re, sys
-needle, path = sys.argv[1], sys.argv[2]
-xml = open(path, encoding='utf-8').read()
-for m in re.finditer(r'<node [^>]*>', xml):
-    n = m.group(0)
-    if needle in n:
-        b = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', n)
-        if b:
-            x1, y1, x2, y2 = map(int, b.groups()); print((x1 + x2) // 2, (y1 + y2) // 2); break
-PY
-}
 
 echo "== install"; ADB_TIMEOUT=180 adb install -r "$APK"
 U0=$(users); R0=$(runs)
@@ -37,13 +22,11 @@ shot 01-launch; alive
 U1=$(users); echo "users before=$U0 after=$U1"
 [ "$U1" -gt "$U0" ] || { echo "FAIL: app did not create a guest account through the API"; exit 1; }
 
-echo "== onboarding + play (best effort via accessibility tree)"
-tap_text 'Sahneye' && sleep 3 || true
-shot 02-after-onboarding
-tap_text 'GÖSTERİ' && sleep 4 || true
-for i in 1 2 3 4 5 6; do adb shell input tap 540 1200; sleep 1.2; done
-shot 03-playing
-R1=$(runs); echo "runs before=$R0 after=$R1" | tee "$OUT/runs.txt"
+echo "== onboarding → play with real touches → server-verified result (Playwright drives the WebView)"
+OUT="$OUT" timeout 420 node scripts/android-webview-e2e.mjs | tee "$OUT/webview-e2e.txt"
+F1=$(psql "$DATABASE_URL" -tAc "select count(*) from \"Run\" where status='FINISHED'")
+R1=$(runs); echo "runs before=$R0 after=$R1 finished=$F1" | tee "$OUT/runs.txt"
+[ "$F1" -ge 1 ] || { echo "FAIL: no server-verified run from the device"; exit 1; }
 
 echo "== haptics reached the Android vibrator service?"
 adb shell dumpsys vibrator_manager > "$OUT/vibrator.txt" 2>&1 || adb shell dumpsys vibrator > "$OUT/vibrator.txt" 2>&1 || true
@@ -60,7 +43,11 @@ adb shell dumpsys activity activities | grep -iE "requestedOrientation|screenOri
 adb shell settings put system user_rotation 0
 
 echo "== secure storage: JWT must not be stored in plain shared_prefs"
-adb shell run-as "$PKG" sh -c 'cat shared_prefs/*.xml 2>/dev/null' > "$OUT/shared_prefs.txt" || true
+: > "$OUT/shared_prefs.txt"
+for f in $(ADB_TIMEOUT=15 adb shell "run-as $PKG ls shared_prefs" 2>/dev/null | tr -d '\r'); do
+  ADB_TIMEOUT=15 adb exec-out "run-as $PKG cat shared_prefs/$f" >> "$OUT/shared_prefs.txt" 2>/dev/null || true
+done
+echo "shared_prefs bytes: $(wc -c < "$OUT/shared_prefs.txt")"
 if grep -q 'eyJhbGci' "$OUT/shared_prefs.txt"; then echo "FAIL: plaintext JWT in shared_prefs"; exit 1; fi
 
 echo "== deep link: golgekuklaci://duel/<code> opens the app's duel invite flow"
