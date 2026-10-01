@@ -4,7 +4,7 @@ const chromium = process.env.PW_CHROMIUM_PATH;
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 90_000,
+  timeout: 120_000,
   retries: 0,
   workers: 1,
   use: {
@@ -24,6 +24,12 @@ export default defineConfig({
       // All e2e browsers share 127.0.0.1; lift the per-IP guest cap for the test run only.
       env: { GUEST_ACCOUNTS_PER_IP_PER_DAY: '100000', AUTH_RATE_LIMIT_PER_MIN: '1000' },
       url: 'http://localhost:3000/health',
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      command: 'pnpm --filter @stage/api realtime',
+      url: 'http://localhost:2567/health',
       reuseExistingServer: false,
       timeout: 60_000,
     },

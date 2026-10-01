@@ -36,11 +36,14 @@ export interface Profile {
   id: string; displayName: string; registered: boolean; role: string; credits: number; gems: number; fans: number;
   level: number; levelFloor: number; nextLevelFans: number; bestScore: number; totalRuns: number; rank: number | null;
   skin: string; character: string; tutorialDone: boolean; settings: Settings; reviveCost: number;
+  onboarded: boolean; maxAct: number; startActs: number[];
 }
+export interface ActiveEvent { id: string; name: string; description: string; endsAt: string; fansMult: number; creditsMult: number }
+export type RunMode = 'normal' | 'challenge';
 export interface Mission { key: string; label: string; target: number; reward: number; progress: number; completed: boolean; claimed: boolean; kind?: MissionKind }
 export interface FinishResult {
   verified: boolean; summary: RunSummary; rewards: { fans: number; credits: number; gems: number };
-  rewardsPaused: boolean; newBest: boolean; missions: { key: string; label: string; progress: number; target: number; completed: boolean }[];
+  rewardsPaused: boolean; newBest: boolean; mode: RunMode; event: { name: string } | null; missions: { key: string; label: string; progress: number; target: number; completed: boolean }[];
 }
 export interface ShopData {
   items: { id: string; kind: 'skin' | 'character'; name: string; price: number; currency: 'credits' | 'gems'; colors: number[]; owned: boolean }[];
@@ -60,14 +63,19 @@ export const api = {
     await storage.set(TOKEN_KEY, token);
   },
   async setToken(t: string): Promise<void> { token = t; await storage.set(TOKEN_KEY, t); },
+  /** Current bearer token, used to authenticate the realtime (Colyseus) connection. */
+  token: (): string | null => token,
   async logout(): Promise<void> { token = null; await storage.remove(TOKEN_KEY); },
   me: () => request<Profile>('GET', '/me'),
   updateSettings: (s: Partial<Settings> & { tutorialDone?: boolean; displayName?: string }) => request<{ settings: Settings }>('PATCH', '/me/settings', s),
   register: (email: string, password: string, displayName?: string) => request<{ token: string }>('POST', '/auth/register', { email, password, ...(displayName ? { displayName } : {}) }),
   login: (email: string, password: string) => request<{ token: string }>('POST', '/auth/login', { email, password }),
-  startRun: () => request<{ runId: string; seed: number; params: RunParams }>('POST', '/runs'),
+  startRun: (body: { mode?: RunMode; startAct?: number } = {}) => request<{ runId: string; seed: number; params: RunParams; mode: RunMode; week?: string; attemptsLeft?: number }>('POST', '/runs', body),
+  onboarding: (displayName: string) => request<{ displayName: string }>('POST', '/me/onboarding', { displayName }),
+  logoutAll: () => request<{ ok: boolean }>('POST', '/auth/logout-all'),
+  activeEvent: () => request<{ event: ActiveEvent | null }>('GET', '/events/active'),
   finishRun: (runId: string, inputs: RunInput[]) => request<FinishResult>('POST', `/runs/${runId}/finish`, { inputs }),
-  leaderboard: (period: 'all' | 'weekly') => request<LeaderboardData>('GET', `/leaderboard?period=${period}`),
+  leaderboard: (period: 'all' | 'weekly' | 'challenge') => request<LeaderboardData>('GET', `/leaderboard?period=${period}`),
   daily: () => request<DailyData>('GET', '/daily'),
   claimDaily: () => request<{ streak: number; cycleDay: number; reward: { credits: number; gems: number } }>('POST', '/daily/claim'),
   missions: () => request<{ day: string; missions: Mission[] }>('GET', '/missions'),

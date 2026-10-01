@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import type { Server } from 'colyseus';
+import type { Server } from '@colyseus/core';
 import { Client, type Room } from 'colyseus.js';
 import { DEFAULT_PARAMS, DUEL_COUNTDOWN_MS, DUEL_WIN_CREDITS, RunSim } from '@stage/shared';
 import { startRealtime } from '../src/realtime-server';

@@ -24,7 +24,9 @@ const scene = () => game.scene.getScene('stage') as StageScene | null;
 // Lifecycle: pause the run when the app is backgrounded so the clock (and battery use) stops.
 function pauseForBackground(): void {
   const s = scene();
-  if (s?.sim && s.sim.state === 'active' && !s.paused && document.getElementById('ui')?.dataset.screen === 'hud') {
+  // Live duels cannot be paused (the server clock keeps running), so only solo shows pause.
+  const live = !!document.querySelector('[data-testid="opponents"]');
+  if (!live && s?.sim && s.sim.state === 'active' && !s.paused && document.getElementById('ui')?.dataset.screen === 'hud') {
     s.paused = true;
     app.show('pause');
   }

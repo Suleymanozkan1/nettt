@@ -1,14 +1,18 @@
 import Phaser from 'phaser';
-import { CATALOG, DEFAULT_CHARACTER, DEFAULT_PARAMS, DEFAULT_SKIN, MAX_REVIVES, ROUNDS_PER_LEVEL, BOSS_EVERY, startLives, type RunInput, type RunSummary, type SimEvent } from '@stage/shared';
-import { api, ApiError, type FinishResult, type Profile } from '../lib/api';
+import { CATALOG, DEFAULT_CHARACTER, DEFAULT_PARAMS, DEFAULT_SKIN, MAX_REVIVES, ROUNDS_PER_LEVEL, BOSS_EVERY, startLives, type RunInput, type RunParams, type RunSummary, type SimEvent } from '@stage/shared';
+import type { Room } from 'colyseus.js';
+import { api, ApiError, type ActiveEvent, type FinishResult, type Profile, type RunMode } from '../lib/api';
+import { joinDuel, type DuelResult, type DuelStateView } from '../lib/duel';
+import { setDailyReminder } from '../lib/reminders';
 import { setSoundEnabled, sfx } from '../lib/audio';
 import { setHapticsEnabled } from '../lib/haptics';
 import type { StageScene } from '../game/StageScene';
 import { h, toast, fmt } from './dom';
 
-type Screen = 'home' | 'hud' | 'pause' | 'gameover' | 'results' | 'shop' | 'leaderboard' | 'daily' | 'missions' | 'profile' | 'settings' | 'notifications' | 'levels';
+type Screen = 'home' | 'hud' | 'pause' | 'gameover' | 'results' | 'shop' | 'leaderboard' | 'daily' | 'missions' | 'profile' | 'settings' | 'notifications' | 'levels' | 'onboarding' | 'challenge' | 'duel';
 
-interface RunCtx { runId: string | null; offline: boolean; score: number; combo: number; level: number; lives: number }
+type Mode = RunMode | 'duel';
+interface RunCtx { runId: string | null; offline: boolean; mode: Mode; startAct: number; score: number; combo: number; level: number; lives: number }
 
 const ERRORS: Record<string, string> = {
   insufficient_funds: 'Yetersiz bakiye', already_owned: 'Zaten sende', already_claimed: 'Bugün zaten alındı',
@@ -23,6 +27,10 @@ export class App {
   private bootError: string | null = null;
   private run: RunCtx | null = null;
   private notes: { text: string; go: Screen }[] = [];
+  private event: ActiveEvent | null = null;
+  private startAct = 1;
+  private duel: { room: Room<DuelStateView>; finishedLocal: boolean } | null = null;
+  private menu3dModule: typeof import('../menu3d/Menu3D') | null = null;
 
   constructor(private readonly root: HTMLElement, private readonly game: Phaser.Game) {}
 
@@ -40,7 +48,7 @@ export class App {
       this.offline = true;
       if (e instanceof ApiError && e.code !== 'offline') this.bootError = errText(e);
     }
-    this.show('home');
+    this.show(this.profile && !this.profile.onboarded ? 'onboarding' : 'home');
   }
 
   async refresh(): Promise<void> {
@@ -48,6 +56,8 @@ export class App {
     setSoundEnabled(this.profile.settings.sound);
     setHapticsEnabled(this.profile.settings.haptics);
     this.offline = false;
+    if (!this.profile.startActs.includes(this.startAct)) this.startAct = 1;
+    try { this.event = (await api.activeEvent()).event; } catch { this.event = null; }
     await this.refreshNotes();
   }
 
@@ -63,10 +73,28 @@ export class App {
   }
 
   show(screen: Screen): void {
+    void this.menu3d(screen === 'home' || screen === 'onboarding');
     this.root.replaceChildren();
     this.root.dataset.screen = screen;
     const view = this.render(screen);
     if (view) this.root.append(view);
+  }
+
+  /**
+   * Decorative Three.js / React Three Fiber background for the menus. Loaded on demand as a separate
+   * chunk, unmounted during play (battery), skipped with reduced motion or without WebGL.
+   */
+  private async menu3d(on: boolean): Promise<void> {
+    const el = document.getElementById('menu3d');
+    if (!el) return;
+    if (!on) { if (this.menu3dModule) this.menu3dModule.unmountMenu3D(); return; }
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const webgl = (() => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; } })();
+    if (reduced || !webgl) return;
+    try {
+      this.menu3dModule ??= await import('../menu3d/Menu3D');
+      this.menu3dModule.mountMenu3D(el);
+    } catch { /* decorative only */ }
   }
 
   private render(screen: Screen): HTMLElement | null {
@@ -83,6 +111,9 @@ export class App {
       case 'settings': return this.settings();
       case 'notifications': return this.notifications();
       case 'levels': return this.levels();
+      case 'onboarding': return this.onboarding();
+      case 'challenge': return this.lazy(() => this.challenge());
+      case 'duel': return this.duelLobby();
       case 'results': return null;
     }
   }
@@ -123,8 +154,13 @@ export class App {
         h('span', {}, `Sv ${p.level} · ${p.displayName}`),
         h('div', { class: 'progress', role: 'progressbar', 'aria-valuenow': Math.round(progress * 100) }, h('i', { style: `width:${Math.round(progress * 100)}%` })),
         h('small', { class: 'muted' }, `${fmt(p.fans)} / ${fmt(p.nextLevelFans)} hayran · En iyi ${fmt(p.bestScore)}`)) : null,
-      h('button', { class: 'play', 'data-testid': 'play', onclick: () => void this.startRun() }, '▶ GÖSTERİ'),
+      this.event ? h('p', { class: 'event', 'data-testid': 'event' }, `🎉 ${this.event.name}: ${this.event.fansMult > 1 ? `x${this.event.fansMult} hayran ` : ''}${this.event.creditsMult > 1 ? `x${this.event.creditsMult} jeton` : ''}`.trim()) : null,
+      h('button', { class: 'play', 'data-testid': 'play', onclick: () => void this.startRun({ startAct: this.startAct }) }, this.startAct > 1 ? `▶ GÖSTERİ · ${this.startAct}. perde` : '▶ GÖSTERİ'),
+      p && p.startActs.length > 1 ? h('div', { class: 'tabs acts', role: 'radiogroup', 'aria-label': 'Başlangıç perdesi' }, ...p.startActs.map((a) =>
+        h('button', { class: a === this.startAct ? 'on' : '', role: 'radio', 'aria-checked': a === this.startAct, 'data-testid': `act-${a}`, onclick: () => { this.startAct = a; this.show('home'); } }, `${a}. perde`))) : null,
       h('div', { class: 'grid' },
+        nav('⚔ Düello', 'duel'),
+        nav('🏁 Meydan Okuma', 'challenge'),
         nav('🎁 Günlük', 'daily', this.notes.some((n) => n.go === 'daily')),
         nav('🎯 Görevler', 'missions', this.notes.some((n) => n.go === 'missions')),
         nav('🏆 Sıralama', 'leaderboard'),
@@ -138,23 +174,26 @@ export class App {
   }
 
   // ---------------- Run lifecycle ----------------
-  async startRun(): Promise<void> {
+  async startRun(opts: { mode?: RunMode; startAct?: number } = {}): Promise<void> {
     sfx.click();
+    const mode: RunMode = opts.mode ?? 'normal';
+    const startAct = mode === 'challenge' ? 1 : opts.startAct ?? 1;
     let runId: string | null = null;
     let seed = Math.floor(Math.random() * 2 ** 31);
-    let params = DEFAULT_PARAMS;
+    let params: RunParams = { ...DEFAULT_PARAMS, startAct };
     let offline = this.offline;
     if (!offline) {
       try {
-        ({ runId, seed, params } = await api.startRun());
+        ({ runId, seed, params } = await api.startRun({ mode, startAct }));
       } catch (e) {
         if (e instanceof ApiError && e.code === 'offline') { offline = true; toast('Çevrimdışı: antrenman gösterisi, kaydedilmez', 'error'); }
+        else if (e instanceof ApiError && e.code === 'challenge_attempts_used') { toast('Bugünkü meydan okuma hakların bitti', 'error'); return; }
         else { toast('Gösteri başlatılamadı, tekrar dene.', 'error'); return; }
       }
     }
     const lamp = CATALOG.find((c) => c.id === (this.profile?.skin ?? DEFAULT_SKIN)) ?? CATALOG.find((c) => c.id === DEFAULT_SKIN)!;
     const puppet = CATALOG.find((c) => c.id === (this.profile?.character ?? DEFAULT_CHARACTER));
-    this.run = { runId, offline, score: 0, combo: 0, level: 1, lives: startLives(params) };
+    this.run = { runId, offline, mode, startAct, score: 0, combo: 0, level: startAct, lives: startLives(params) };
     this.scene.startRun(seed, params, lamp.colors[0]!, puppet?.colors[0] ?? 0xff8c42, {
       onRound: (ev) => this.onRound(ev),
       onBoss: (level) => toast(`BOSS PERDESİ ${level}: Rüzgâr perdeyi dalgalandırıyor!`, 'error'),
@@ -204,10 +243,14 @@ export class App {
       h('div', { class: 'hud-top' },
         h('span', { class: 'hud-level', 'data-testid': 'level' }),
         h('span', { class: 'hud-lives', 'data-testid': 'lives', 'aria-label': 'Kalan spot ışığı' }),
-        h('button', { class: 'pause-btn', 'aria-label': 'Duraklat', 'data-testid': 'pause', onclick: (e) => { e.stopPropagation(); this.scene.paused = true; this.show('pause'); } }, 'II')),
+        this.run?.mode === 'duel'
+          ? h('button', { class: 'pause-btn', 'aria-label': 'Düellodan çık', onclick: (e) => { e.stopPropagation(); void this.leaveDuel(); this.show('home'); } }, '✕')
+          : h('button', { class: 'pause-btn', 'aria-label': 'Duraklat', 'data-testid': 'pause', onclick: (e) => { e.stopPropagation(); this.scene.paused = true; this.show('pause'); } }, 'II')),
       h('div', { class: 'hud-score', 'data-testid': 'score' }),
       h('div', { class: 'hud-combo', 'data-testid': 'combo' }),
+      this.run?.mode === 'duel' ? h('ul', { class: 'opponents', 'data-testid': 'opponents' }) : null,
     );
+    if (this.run?.mode === 'duel' && this.duel) queueMicrotask(() => this.duel && this.onDuelState(this.duel.room.state));
     queueMicrotask(() => this.updateHud());
     return el;
   }
@@ -251,15 +294,16 @@ export class App {
       }
     }
     this.run = null;
-    this.renderResults(sim.summary(), result, error, run.offline);
+    this.renderResults(sim.summary(), result, error, run.offline, run);
   }
 
-  private renderResults(local: RunSummary, result: FinishResult | null, error: string | null, offline: boolean): void {
+  private renderResults(local: RunSummary, result: FinishResult | null, error: string | null, offline: boolean, again: RunCtx): void {
     this.root.dataset.screen = 'results';
     const s = result?.summary ?? local;
     if (result && (result.rewards.credits || result.rewards.gems)) sfx.reward();
     this.root.replaceChildren(h('div', { class: 'panel modal results', 'data-testid': 'results-panel' },
-      h('h2', {}, result?.newBest ? '🎉 Yeni rekor!' : 'Perde kapandı'),
+      h('h2', {}, result?.newBest ? '🎉 Yeni rekor!' : again.mode === 'challenge' ? '🏁 Meydan okuma bitti' : 'Perde kapandı'),
+      result?.event ? h('p', { class: 'event' }, `🎉 ${result.event.name} çarpanı uygulandı`) : null,
       h('p', { class: 'big', 'data-testid': 'final-score' }, String(s.score)),
       h('dl', { class: 'stats' },
         h('dt', {}, 'Oturan gölge'), h('dd', {}, String(s.fits)),
@@ -277,7 +321,7 @@ export class App {
       result ? h('ul', { class: 'mission-mini' }, ...result.missions.map((m) => h('li', { class: m.completed ? 'done' : '' }, `${m.label}: ${m.progress}/${m.target}`))) : null,
       error ? h('p', { class: 'error' }, error) : null,
       offline ? h('p', { class: 'muted' }, 'Antrenman gösterisi — kaydedilmedi.') : null,
-      h('button', { class: 'primary', 'data-testid': 'again', onclick: () => void this.startRun() }, 'Tekrar oyna'),
+      h('button', { class: 'primary', 'data-testid': 'again', onclick: () => void this.startRun({ mode: again.mode === 'challenge' ? 'challenge' : 'normal', startAct: again.startAct }) }, 'Tekrar oyna'),
       h('button', { onclick: () => this.show('home') }, 'Ana sayfa'),
     ));
   }
@@ -317,10 +361,10 @@ export class App {
     return panel;
   }
 
-  private async leaderboard(period: 'all' | 'weekly'): Promise<HTMLElement> {
+  private async leaderboard(period: 'all' | 'weekly' | 'challenge'): Promise<HTMLElement> {
     const data = await api.leaderboard(period);
     const panel: HTMLElement = h('div', { class: 'panel' }, this.back(), h('h2', {}, 'Sıralama'),
-      h('div', { class: 'tabs' }, ...(['all', 'weekly'] as const).map((p) => h('button', { class: p === period ? 'on' : '', onclick: async () => panel.replaceWith(await this.leaderboard(p)) }, p === 'all' ? 'Tüm zamanlar' : 'Bu hafta'))),
+      h('div', { class: 'tabs' }, ...(['all', 'weekly', 'challenge'] as const).map((p) => h('button', { class: p === period ? 'on' : '', onclick: async () => panel.replaceWith(await this.leaderboard(p)) }, p === 'all' ? 'Tüm zamanlar' : p === 'weekly' ? 'Bu hafta' : 'Meydan okuma'))),
       h('ol', { class: 'board', 'data-testid': 'leaderboard' }, ...data.entries.map((e) => h('li', { class: e.me ? 'me' : '' }, h('span', {}, `#${e.rank}`), h('span', {}, e.name), h('b', {}, fmt(e.score))))),
       data.entries.length === 0 ? h('p', { class: 'muted' }, 'Henüz doğrulanmış skor yok. İlk sen ol!') : null,
       h('p', { class: 'muted' }, data.myRank ? `Senin sıran: #${data.myRank} (${fmt(data.myScore)})` : 'Sıralamaya girmek için bir gösteri oyna.'));
@@ -402,6 +446,10 @@ export class App {
         if (key === 'sound') setSoundEnabled(on);
         if (key === 'haptics') setHapticsEnabled(on);
         try { const r = await api.updateSettings({ [key]: on }); if (p) p.settings = r.settings; await this.refreshNotes(); } catch (err) { toast(errText(err), 'error'); }
+        if (key === 'notifications') {
+          const native = await setDailyReminder(on).catch(() => false);
+          if (on) toast(native ? 'Her gün 19:00’da hatırlatılacak' : 'Hatırlatmalar oyun içi gelen kutusunda görünür', 'info');
+        }
       } }));
     const email = h('input', { type: 'email', placeholder: 'e-posta', autocomplete: 'email' });
     const pass = h('input', { type: 'password', placeholder: 'şifre (en az 8 karakter)', autocomplete: 'current-password' });
@@ -420,6 +468,112 @@ export class App {
       p?.registered ? h('p', { class: 'muted' }, 'İlerlemen hesabına kaydediliyor.') : h('p', { class: 'muted' }, 'Misafir olarak oynuyorsun. İlerlemeni e-posta hesabıyla sakla:'),
       p?.registered ? null : h('div', { class: 'form' }, email, pass,
         h('button', { onclick: () => auth('register') }, 'Hesabı kaydet'), h('button', { onclick: () => auth('login') }, 'Giriş yap')),
+      p ? h('button', { 'data-testid': 'logout-all', onclick: async () => {
+        try { await api.logoutAll(); await api.logout(); toast('Tüm cihazlardan çıkış yapıldı', 'info'); await this.boot(); } catch (e) { toast(errText(e), 'error'); }
+      } }, 'Tüm cihazlardan çıkış yap') : null,
       h('p', { class: 'muted small' }, 'Gölge Kuklacı’da reklam, gerçek parayla satın alma ve şans kutusu yoktur.'));
+  }
+
+  // ---------------- Onboarding ----------------
+  private onboarding(): HTMLElement {
+    const input = h('input', { type: 'text', maxlength: 20, value: this.profile?.displayName ?? '', 'data-testid': 'name-input', 'aria-label': 'Sahne adın' });
+    const go = async () => {
+      try { await api.onboarding(input.value.trim()); await this.refresh(); this.show('home'); }
+      catch (e) { toast(e instanceof ApiError && e.code === 'validation_error' ? '2–20 harf, rakam, boşluk, _ veya -' : errText(e), 'error'); }
+    };
+    return h('div', { class: 'panel modal' },
+      h('h1', { class: 'logo' }, 'GÖLGE', h('br'), 'KUKLACI'),
+      h('p', {}, 'Hoş geldin, kuklacı! Sahnede hangi adla anılmak istersin?'),
+      h('div', { class: 'form' }, input),
+      h('button', { class: 'primary', 'data-testid': 'onboard', onclick: go }, 'Sahneye çık'),
+      h('p', { class: 'muted small' }, 'Adın sıralamada görünür. Daha sonra değiştirmek için Ayarlar’ı kullanabilirsin.'));
+  }
+
+  // ---------------- Weekly challenge ----------------
+  private async challenge(): Promise<HTMLElement> {
+    const board = await api.leaderboard('challenge');
+    return h('div', { class: 'panel' }, this.back(), h('h2', {}, '🏁 Haftalık Meydan Okuma'),
+      h('p', { class: 'muted' }, 'Bu hafta herkes aynı gösteriyi oynar: aynı kalıplar, aynı salınım. Geliştirmeler kapalıdır; sadece ustalık sayılır. Günde 5 deneme hakkın var.'),
+      h('button', { class: 'primary', 'data-testid': 'play-challenge', onclick: () => void this.startRun({ mode: 'challenge' }) }, 'Meydan okumayı oyna'),
+      h('h3', {}, 'Haftanın en iyileri'),
+      h('ol', { class: 'board' }, ...board.entries.slice(0, 10).map((e) => h('li', { class: e.me ? 'me' : '' }, h('span', {}, `#${e.rank}`), h('span', {}, e.name), h('b', {}, fmt(e.score))))),
+      board.entries.length === 0 ? h('p', { class: 'muted' }, 'Bu hafta henüz kimse oynamadı.') : null,
+      h('p', { class: 'muted' }, board.myRank ? `Senin sıran: #${board.myRank}` : 'Henüz sıralamada değilsin.'));
+  }
+
+  // ---------------- Live duel (Colyseus) ----------------
+  private duelLobby(): HTMLElement {
+    const panel = h('div', { class: 'panel modal', 'data-testid': 'duel-lobby' }, h('h2', {}, '⚔ Canlı Düello'),
+      h('p', { class: 'muted' }, '2–4 kuklacı aynı gösteriyi aynı anda oynar. Skorları sunucu hesaplar; en yüksek skor kazanır (günde ilk 3 galibiyet 🪙30).'),
+      h('p', { 'data-testid': 'duel-status' }, 'Bağlanılıyor…'),
+      h('ul', { class: 'mission-mini', 'data-testid': 'duel-players' }),
+      h('button', { onclick: () => { void this.leaveDuel(); this.show('home'); } }, 'Vazgeç'));
+    if (this.offline) { panel.querySelector('[data-testid="duel-status"]')!.textContent = 'Düello için bağlantı gerekli.'; return panel; }
+    if (!this.duel) void this.connectDuel();
+    return panel;
+  }
+
+  private async connectDuel(): Promise<void> {
+    let room: Room<DuelStateView>;
+    try { room = await joinDuel(); } catch {
+      const st = this.root.querySelector('[data-testid="duel-status"]');
+      if (st) st.textContent = 'Düello sunucusuna bağlanılamadı.';
+      return;
+    }
+    this.duel = { room, finishedLocal: false };
+    room.onStateChange((state) => this.onDuelState(state));
+    room.onMessage('start', ({ seed }: { seed: number }) => this.startDuelRun(seed));
+    room.onMessage('result', (r: DuelResult) => void this.showDuelResult(r));
+    room.onLeave(() => { if (this.duel?.room === room) this.duel = null; });
+  }
+
+  private async leaveDuel(): Promise<void> {
+    const d = this.duel;
+    this.duel = null;
+    if (d) { this.scene.stop(); await d.room.leave().catch(() => undefined); }
+  }
+
+  private onDuelState(state: DuelStateView): void {
+    const me = this.duel?.room.sessionId;
+    const rows = [...state.players.entries()].map(([id, p]) => h('li', { class: id === me ? 'done' : '' },
+      `${p.name}${id === me ? ' (sen)' : ''}: ${p.score} puan · ${'💡'.repeat(Math.max(0, p.lives))}${p.connected ? '' : ' · ayrıldı'}`));
+    this.root.querySelector('[data-testid="duel-players"]')?.replaceChildren(...rows);
+    this.root.querySelector('[data-testid="opponents"]')?.replaceChildren(...rows);
+    const st = this.root.querySelector('[data-testid="duel-status"]');
+    if (st) st.textContent = state.phase === 'waiting' ? 'Rakip bekleniyor…' : state.phase === 'countdown' ? 'Perde açılıyor… hazır ol!' : '';
+  }
+
+  private startDuelRun(seed: number): void {
+    const room = this.duel?.room;
+    if (!room) return;
+    const lamp = CATALOG.find((c) => c.id === (this.profile?.skin ?? DEFAULT_SKIN)) ?? CATALOG.find((c) => c.id === DEFAULT_SKIN)!;
+    const puppet = CATALOG.find((c) => c.id === (this.profile?.character ?? DEFAULT_CHARACTER));
+    this.run = { runId: null, offline: false, mode: 'duel', startAct: 1, score: 0, combo: 0, level: 1, lives: startLives(DEFAULT_PARAMS) };
+    this.scene.startRun(seed, DEFAULT_PARAMS, lamp.colors[0]!, puppet?.colors[0] ?? 0xff8c42, {
+      onRound: (ev) => this.onRound(ev),
+      onBoss: (level) => toast(`BOSS PERDESİ ${level}!`, 'error'),
+      onDead: () => {
+        if (this.duel) this.duel.finishedLocal = true;
+        this.root.replaceChildren(h('div', { class: 'panel modal' }, h('h2', {}, 'Işıkların söndü'), h('p', {}, 'Rakiplerin gösterisini bitirmesi bekleniyor…'), h('ul', { class: 'mission-mini', 'data-testid': 'opponents' })));
+        this.onDuelState(room.state);
+      },
+    }, (input) => room.send('tap', { t: input.t }));
+    this.show('hud');
+  }
+
+  private async showDuelResult(r: DuelResult): Promise<void> {
+    const me = this.duel?.room.sessionId;
+    this.scene.stop();
+    this.run = null;
+    await this.leaveDuel();
+    if (r.reward && r.winner === me) { sfx.reward(); await this.refresh().catch(() => undefined); }
+    this.root.dataset.screen = 'results';
+    this.root.replaceChildren(h('div', { class: 'panel modal results', 'data-testid': 'duel-result' },
+      h('h2', {}, r.winner === me ? '🏆 Düelloyu kazandın!' : r.winner ? 'Düello bitti' : 'Berabere!'),
+      h('ol', { class: 'board' }, ...r.ranking.map((p, i) => h('li', { class: p.sessionId === me ? 'me' : '' }, h('span', {}, `#${i + 1}`), h('span', {}, p.name), h('b', {}, String(p.score))))),
+      r.winner === me ? h('p', {}, r.reward ? `🪙 +${r.reward}` : 'Bugünkü ödüllü galibiyet sınırına ulaştın.') : null,
+      h('small', { class: 'muted' }, '✔ Skorlar sunucu tarafından hesaplandı'),
+      h('button', { class: 'primary', onclick: () => this.show('duel') }, 'Yeni düello'),
+      h('button', { onclick: () => this.show('home') }, 'Ana sayfa')));
   }
 }

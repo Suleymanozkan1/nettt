@@ -2,11 +2,14 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../../../node_modules/.pnpm/@capacitor+android@7.6.9_@capacitor+core@7.6.9/node_modules/@capacitor/android/capacitor')
 
+include ':aparajita-capacitor-secure-storage'
+project(':aparajita-capacitor-secure-storage').projectDir = new File('../../../node_modules/.pnpm/@aparajita+capacitor-secure-storage@7.1.6/node_modules/@aparajita/capacitor-secure-storage/android')
+
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../../../node_modules/.pnpm/@capacitor+app@7.1.2_@capacitor+core@7.6.9/node_modules/@capacitor/app/android')
 
 include ':capacitor-haptics'
 project(':capacitor-haptics').projectDir = new File('../../../node_modules/.pnpm/@capacitor+haptics@7.0.5_@capacitor+core@7.6.9/node_modules/@capacitor/haptics/android')
 
-include ':capacitor-preferences'
-project(':capacitor-preferences').projectDir = new File('../../../node_modules/.pnpm/@capacitor+preferences@7.0.4_@capacitor+core@7.6.9/node_modules/@capacitor/preferences/android')
+include ':capacitor-local-notifications'
+project(':capacitor-local-notifications').projectDir = new File('../../../node_modules/.pnpm/@capacitor+local-notifications@7.0.7_@capacitor+core@7.6.9/node_modules/@capacitor/local-notifications/android')

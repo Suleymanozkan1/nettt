@@ -16,6 +16,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
   api:
+    image: golge-api
     build: { context: ., dockerfile: apps/api/Dockerfile }
     environment:
       DATABASE_URL: postgresql://stage:${POSTGRES_PASSWORD:-stage}@postgres:5432/stagestack
@@ -26,12 +27,34 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+  realtime:
+    image: golge-api
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["sh", "-c", "cd apps/api && npx tsx src/realtime-server.ts"]
+    environment:
+      DATABASE_URL: postgresql://stage:${POSTGRES_PASSWORD:-stage}@postgres:5432/stagestack
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars)}
+      REALTIME_PORT: "2567"
+    ports: ["2567:2567"]
+    depends_on: [api]
+  backup:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-stage}
+    volumes: [backups:/backups]
+    # Daily logical backup, 7 days retained. Restore rehearsal: scripts/restore-check.sh
+    command: ["sh", "-c", "while true; do pg_dump -h postgres -U stage --no-owner stagestack | gzip > /backups/golge-$$(date -u +%Y%m%dT%H%M%SZ).sql.gz; find /backups -name '*.sql.gz' -mtime +7 -delete; sleep 86400; done"]
+    depends_on:
+      postgres: { condition: service_healthy }
   game:
     build:
       context: .
       dockerfile: apps/game/Dockerfile
-      args: { VITE_API_URL: "${VITE_API_URL:-http://localhost:3000}" }
+      args:
+        VITE_API_URL: "${VITE_API_URL:-http://localhost:3000}"
+        VITE_REALTIME_URL: "${VITE_REALTIME_URL:-ws://localhost:2567}"
     ports: ["8080:80"]
     depends_on: [api]
 volumes:
   pgdata:
+  backups:

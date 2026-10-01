@@ -8,7 +8,8 @@ RUN pnpm install --frozen-lockfile --filter @stage/game...
 COPY packages/shared packages/shared
 COPY apps/game apps/game
 ARG VITE_API_URL=http://localhost:3000
-ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_REALTIME_URL=ws://localhost:2567
+ENV VITE_API_URL=$VITE_API_URL VITE_REALTIME_URL=$VITE_REALTIME_URL
 RUN pnpm --filter @stage/game exec vite build
 
 FROM nginx:1.27-alpine

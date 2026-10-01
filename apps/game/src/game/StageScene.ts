@@ -33,6 +33,7 @@ export class StageScene extends Phaser.Scene {
   private lightColor = 0xffc46b;
   private puppetColor = 0xff8c42;
   private cb: RunCallbacks | null = null;
+  private onInput: ((input: RunInput) => void) | null = null;
   private world!: Phaser.GameObjects.Container;
   private wall!: Phaser.GameObjects.Rectangle;
   private gfx!: Phaser.GameObjects.Graphics;
@@ -77,7 +78,9 @@ export class StageScene extends Phaser.Scene {
     this.audience.forEach((a, i) => a.setPosition((WORLD_WIDTH / (AUDIENCE - 1)) * i, 600 + (i % 2) * 14));
   }
 
-  startRun(seed: number, params: RunParams, lightColor: number, puppetColor: number, cb: RunCallbacks): void {
+  /** `onInput` forwards every accepted input (used by live duels to stream taps to the server). */
+  startRun(seed: number, params: RunParams, lightColor: number, puppetColor: number, cb: RunCallbacks, onInput?: (input: RunInput) => void): void {
+    this.onInput = onInput ?? null;
     this.sim = new RunSim(seed, params);
     this.inputs = [];
     this.clock = 0;
@@ -108,6 +111,7 @@ export class StageScene extends Phaser.Scene {
     const ev = sim.tap(t);
     if (!ev) return;
     this.inputs.push({ t, k: 'tap' });
+    this.onInput?.({ t, k: 'tap' });
     this.process([ev]);
   }
 
@@ -119,6 +123,12 @@ export class StageScene extends Phaser.Scene {
     this.inputs.push({ t, k: 'revive' });
     this.deadNotified = false;
     return true;
+  }
+
+  /** Stops rendering/simulating the current show (e.g. leaving a duel). */
+  stop(): void {
+    this.sim = null;
+    this.onInput = null;
   }
 
   quit(): void {

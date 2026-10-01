@@ -10,9 +10,11 @@
     "test": "vitest run",
     "build": "prisma generate && tsc --noEmit",
     "db:migrate": "prisma migrate deploy",
-    "db:dev": "prisma migrate dev"
+    "db:dev": "prisma migrate dev",
+    "realtime": "tsx --env-file-if-exists=.env src/realtime-server.ts"
   },
   "dependencies": {
+    "@colyseus/core": "0.16.26",
     "@colyseus/schema": "^3.0.76",
     "@colyseus/ws-transport": "~0.16.5",
     "@fastify/cors": "^11.1.0",
@@ -21,7 +23,6 @@
     "@fastify/rate-limit": "^10.3.0",
     "@prisma/client": "6.19.3",
     "@stage/shared": "workspace:*",
-    "colyseus": "0.16.5",
     "fast-jwt": "^6.3.3",
     "fastify": "^5.6.1",
     "ioredis": "^5.8.2",
@@ -31,7 +32,6 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@colyseus/testing": "~0.16.3",
     "@types/node": "^22.18.0",
     "colyseus.js": "~0.16.22",
     "typescript": "~5.9.3",

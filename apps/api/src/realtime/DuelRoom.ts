@@ -1,4 +1,4 @@
-import { Room, ServerError, type AuthContext, type Client } from 'colyseus';
+import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core';
 import { MapSchema, Schema, type } from '@colyseus/schema';
 import { randomInt } from 'node:crypto';
 import { createVerifier } from 'fast-jwt';
