@@ -39,6 +39,8 @@ jobs:
       - name: Create test database
         run: PGPASSWORD=stage psql -h localhost -U stage -d stagestack_dev -c 'CREATE DATABASE stagestack_ci'
       - run: pnpm --filter @stage/api exec prisma generate
+      # Ignored advisories (package.json pnpm.auditConfig): nanoid 2.x pinned by @colyseus/core, which only calls
+      # nanoid(9); the advisories need non-integer, zero, negative or overflowing sizes. See docs/SECURITY.md.
       - run: pnpm audit --prod --audit-level=moderate
       - run: pnpm lint
       - run: pnpm typecheck
