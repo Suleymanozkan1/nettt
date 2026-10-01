@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client';
 import {
   FinishRunBody, MAX_RUN_MS, REVIVE_GEM_COST, replayRun, computeRunRewards, dailyMissions, applyRunToMission,
   isCumulative, utcDay, StartRunBody, DEFAULT_PARAMS, unlockedStartActs, isoWeekKey, challengeSeed,
-  CHALLENGE_ATTEMPTS_PER_DAY, type RunParams,
+  CHALLENGE_ATTEMPTS_PER_DAY, looksSuperhuman, applyDailyPacing, type RunParams,
 } from '@stage/shared';
 import { activeEvent } from './events';
 import { metrics } from '../metrics';
@@ -78,7 +78,8 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
     const summary = replay.summary;
     const paused = await rewardsPaused(prisma, config.DAILY_CREDIT_LIABILITY_LIMIT);
     const event = await activeEvent(prisma);
-    const rewards = computeRunRewards(summary, event ? { fans: event.fansMult, credits: event.creditsMult } : undefined);
+    const baseRewards = computeRunRewards(summary, event ? { fans: event.fansMult, credits: event.creditsMult } : undefined);
+    const dayStart = new Date(`${utcDay()}T00:00:00Z`);
     const day = utcDay();
 
     try {
@@ -89,6 +90,12 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
           data: { status: 'FINISHED', finishedAt: new Date(), ...summary },
         });
         if (flipped.count !== 1) throw new HttpError(409, 'run_already_submitted');
+        // Daily pacing: today's earlier verified shows and show-gems (transparent "tired audience" rule).
+        const [showsBefore, gemsAgg] = await Promise.all([
+          tx.run.count({ where: { userId: uid, status: 'FINISHED', finishedAt: { gte: dayStart }, id: { not: run.id } } }),
+          tx.transaction.aggregate({ _sum: { amount: true }, where: { userId: uid, reason: 'run', currency: 'gems', createdAt: { gte: dayStart } } }),
+        ]);
+        const rewards = applyDailyPacing(baseRewards, showsBefore, gemsAgg._sum.amount ?? 0);
         if (summary.revives > 0) await spend(tx, uid, 'gems', REVIVE_GEM_COST * summary.revives, 'revive', run.id);
 
         await tx.user.update({ where: { id: uid }, data: { fans: { increment: rewards.fans }, totalRuns: { increment: 1 } } });
@@ -114,11 +121,17 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
           missions.push({ key: m.key, label: m.label, progress: Math.min(progress, m.target), target: m.target, completed: progress >= m.target });
         }
         await track(tx, uid, 'run_finish', { runId: run.id, ...summary, credits, gems });
-        return { credits, gems, newBest, missions };
+        return { credits, gems, newBest, missions, fans: rewards.fans, tired: rewards.tired };
       });
+      // Anti-bot: a verified but inhumanly precise run flags the account for admin review (hidden from boards).
+      if (looksSuperhuman(summary, replay.fitErrors)) {
+        await prisma.user.update({ where: { id: uid }, data: { flagged: true } });
+        await track(prisma, uid, 'suspicious_precision', { runId: run.id, fits: summary.fits, perfects: summary.perfects });
+        metrics.runsRejected.inc({ reason: 'suspicious_precision' });
+      }
       metrics.runsFinished.inc({ mode: run.mode });
       if (result.credits) metrics.creditsGranted.inc({ reason: 'run' }, result.credits);
-      return { verified: true, mode: run.mode, event: event ? { name: event.name } : null, summary, rewards: { fans: rewards.fans, credits: result.credits, gems: result.gems }, rewardsPaused: paused, newBest: result.newBest, missions: result.missions };
+      return { verified: true, mode: run.mode, event: event ? { name: event.name } : null, summary, rewards: { fans: result.fans, credits: result.credits, gems: result.gems }, tiredAudience: result.tired, rewardsPaused: paused, newBest: result.newBest, missions: result.missions };
     } catch (err) {
       if (err instanceof HttpError && err.code === 'insufficient_funds') {
         await reject(run.id, uid, 'revive_unpaid');

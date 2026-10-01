@@ -13,4 +13,6 @@ export default tseslint.config(
       'no-console': ['error', { allow: ['warn', 'error'] }],
     },
   },
+  // CLI scripts print their report to stdout.
+  { files: ['scripts/**', '**/scripts/**'], rules: { 'no-console': 'off' } },
 );

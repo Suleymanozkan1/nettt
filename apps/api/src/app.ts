@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
+import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Redis } from 'ioredis';
@@ -25,7 +26,7 @@ declare module 'fastify' {
   }
 }
 declare module '@fastify/jwt' {
-  interface FastifyJWT { payload: { sub: string; tv: number }; user: { sub: string; tv: number } }
+  interface FastifyJWT { payload: { sub: string; tv: number; scope?: 'admin' }; user: { sub: string; tv: number; scope?: 'admin' } }
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -38,7 +39,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   await app.register(helmet);
   const origins = deps.config.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean);
-  await app.register(cors, { origin: origins, methods: ['GET', 'POST', 'PATCH', 'DELETE'] });
+  // credentials: the admin panel uses an httpOnly session cookie (CSRF-guarded in routes/admin.ts).
+  await app.register(cors, { origin: origins, methods: ['GET', 'POST', 'PATCH', 'DELETE'], credentials: true });
+  await app.register(cookie);
   await app.register(jwt, { secret: deps.config.JWT_SECRET, sign: { expiresIn: '30d' } });
   await app.register(rateLimit, {
     max: deps.config.RATE_LIMIT_PER_MIN,

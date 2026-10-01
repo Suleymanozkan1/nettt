@@ -32,12 +32,21 @@ importers:
       '@colyseus/core':
         specifier: 0.16.26
         version: 0.16.26(@colyseus/schema@3.0.76)(@pm2/io@6.1.0)
+      '@colyseus/redis-driver':
+        specifier: ~0.16.1
+        version: 0.16.1(@colyseus/schema@3.0.76)(@pm2/io@6.1.0)
+      '@colyseus/redis-presence':
+        specifier: ~0.16.4
+        version: 0.16.4(@colyseus/schema@3.0.76)(@pm2/io@6.1.0)
       '@colyseus/schema':
         specifier: ^3.0.76
         version: 3.0.76
       '@colyseus/ws-transport':
         specifier: ~0.16.5
         version: 0.16.5(@colyseus/core@0.16.26(@colyseus/schema@3.0.76)(@pm2/io@6.1.0))
+      '@fastify/cookie':
+        specifier: ^11.1.2
+        version: 11.1.2
       '@fastify/cors':
         specifier: ^11.1.0
         version: 11.3.0
@@ -251,6 +260,12 @@ packages:
 
   '@colyseus/msgpackr@1.11.3':
     resolution: {integrity: sha512-P86w/FrZWUaV7StxI7WuNg3wFlUrROSiBOrF378wyOgxS5+etcxUQMPe0OJZDEx+QUdu7QOPzsqE0Ziqwpjnug==}
+
+  '@colyseus/redis-driver@0.16.1':
+    resolution: {integrity: sha512-dFDyyVEBemfdeHrO2fTt86803fV8iMepGi6UHD7feR7vQO9bdN6yXpAyrBWMJrfBs8EFuEEb73gM3mDUjppH/A==}
+
+  '@colyseus/redis-presence@0.16.4':
+    resolution: {integrity: sha512-dROj2T6eqxsquGQQuwqWuBjDDNHj33KKyltWiUMP/dFyPYVG6fFZl+IbHDo3rmRB1RdmjwtEYt9/Bz/Bsszvxw==}
 
   '@colyseus/schema@3.0.76':
     resolution: {integrity: sha512-i+ceBZyhB7lTn5+BoG/xxYfzW4dKKyLOywsGKVgXHe9fD905AS/Lk180jd1bICEJhebGeiRXEQ2YUPl/xwFg2g==}
@@ -508,6 +523,9 @@ packages:
 
   '@fastify/ajv-compiler@4.0.6':
     resolution: {integrity: sha512-NtuzM0SfaMJbGlnjr9LWQUN5LzgSrbB8tf/wRZNas+4E1O/Nmzl53e7ruT61HDZyRCJGC6FxIogmNZO1c5ETBA==}
+
+  '@fastify/cookie@11.1.2':
+    resolution: {integrity: sha512-Dtrpk/YOGUsbRMvP/8ZqPpwnMRv0qSqodFdoQ2B589Obc7jw4s4Qla+cV72Bsm7WsZJnqlYFX/i7uSBq0xzg6g==}
 
   '@fastify/cors@11.3.0':
     resolution: {integrity: sha512-ggQGua+xHv1MvePbPr0v//xLYEsCXbWspquXCJS9Ot5YoRXq8J8ZWzHnxDBVnbtXosvistXo6LtNzOJswf64Fw==}
@@ -1201,6 +1219,10 @@ packages:
   cookie@1.1.1:
     resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
     engines: {node: '>=18'}
+
+  cookie@2.0.1:
+    resolution: {integrity: sha512-yuToqVvRrj6pfDXREyQAAv8SkAEk/8GS3jQRTiUMm66TVtBYmqQeoEjL2Lmq8Rpo6271vH76InTChTitEAm65w==}
+    engines: {node: '>=22'}
 
   cross-env@7.0.3:
     resolution: {integrity: sha512-+/HKd6EgcQCJGh2PSjZuUitQBQynKor4wrFbRg4DtAgS1aWO+gU52xpH7M9ScGgXSYmAVS9bIJ8EzuaGw0oNAw==}
@@ -2612,6 +2634,24 @@ snapshots:
     optionalDependencies:
       msgpackr-extract: 3.0.4
 
+  '@colyseus/redis-driver@0.16.1(@colyseus/schema@3.0.76)(@pm2/io@6.1.0)':
+    dependencies:
+      '@colyseus/core': 0.16.26(@colyseus/schema@3.0.76)(@pm2/io@6.1.0)
+      ioredis: 5.11.1
+    transitivePeerDependencies:
+      - '@colyseus/schema'
+      - '@pm2/io'
+      - supports-color
+
+  '@colyseus/redis-presence@0.16.4(@colyseus/schema@3.0.76)(@pm2/io@6.1.0)':
+    dependencies:
+      '@colyseus/core': 0.16.26(@colyseus/schema@3.0.76)(@pm2/io@6.1.0)
+      ioredis: 5.11.1
+    transitivePeerDependencies:
+      - '@colyseus/schema'
+      - '@pm2/io'
+      - supports-color
+
   '@colyseus/schema@3.0.76': {}
 
   '@colyseus/timer@1.0.3':
@@ -2784,6 +2824,11 @@ snapshots:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 4.2.1
+
+  '@fastify/cookie@11.1.2':
+    dependencies:
+      cookie: 2.0.1
+      fastify-plugin: 6.0.0
 
   '@fastify/cors@11.3.0':
     dependencies:
@@ -3516,6 +3561,8 @@ snapshots:
   consola@3.4.2: {}
 
   cookie@1.1.1: {}
+
+  cookie@2.0.1: {}
 
   cross-env@7.0.3:
     dependencies:

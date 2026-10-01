@@ -1,5 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { AdminEconomyBody, GameEventBody, RefundBody, findItem } from '@stage/shared';
+import { AdminEconomyBody, GameEventBody, LoginBody, RefundBody, findItem } from '@stage/shared';
+import { verifyPassword } from '../password';
+
+const ADMIN_COOKIE = 'golge_admin';
+const ADMIN_SESSION_S = 8 * 60 * 60;
 import { track } from '../app';
 import { HttpError, parse } from '../errors';
 import { rewardsPaused, setRewardsPaused } from '../ledger';
@@ -8,12 +12,48 @@ import { userId } from '../app';
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   const { prisma, config } = app.deps;
 
-  // Role is read from the database on every request, never trusted from the token.
+  const origins = new Set(config.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean));
+  const cookieOpts = { httpOnly: true, sameSite: 'strict' as const, secure: config.NODE_ENV === 'production', path: '/', maxAge: ADMIN_SESSION_S };
+
+  /**
+   * Admin auth: either a Bearer token or the httpOnly `golge_admin` session cookie. Cookie-authenticated
+   * state-changing requests must come from an allowed Origin (CSRF guard on top of SameSite=Strict).
+   * The role is read from the database on every request, never trusted from the token.
+   */
   async function requireAdmin(req: FastifyRequest): Promise<void> {
-    await app.authenticate(req);
+    const sessionToken = req.cookies[ADMIN_COOKIE];
+    if (!req.headers.authorization && sessionToken) {
+      if (req.method !== 'GET' && !origins.has(String(req.headers.origin ?? ''))) throw new HttpError(403, 'csrf_origin');
+      let payload: { sub: string; tv: number; scope?: string };
+      try { payload = app.jwt.verify(sessionToken); } catch { throw new HttpError(401, 'unauthorized'); }
+      if (payload.scope !== 'admin') throw new HttpError(401, 'unauthorized');
+      const u = await prisma.user.findUnique({ where: { id: payload.sub }, select: { tokenVersion: true } });
+      if (!u || u.tokenVersion !== payload.tv) throw new HttpError(401, 'unauthorized');
+      req.user = { sub: payload.sub, tv: payload.tv, scope: 'admin' };
+    } else {
+      await app.authenticate(req);
+    }
     const user = await prisma.user.findUnique({ where: { id: userId(req) }, select: { role: true } });
     if (user?.role !== 'ADMIN') throw new HttpError(403, 'forbidden');
   }
+
+  app.post('/auth/admin-session', { config: { rateLimit: { max: config.AUTH_RATE_LIMIT_PER_MIN, timeWindow: '1 minute' } } }, async (req, reply) => {
+    if (!origins.has(String(req.headers.origin ?? ''))) throw new HttpError(403, 'csrf_origin');
+    const body = parse(LoginBody, req.body);
+    const user = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
+    const ok = user?.passwordHash ? await verifyPassword(body.password, user.passwordHash) : false;
+    if (!user || !ok || user.role !== 'ADMIN') throw new HttpError(401, 'invalid_credentials');
+    const token = app.jwt.sign({ sub: user.id, tv: user.tokenVersion, scope: 'admin' }, { expiresIn: `${ADMIN_SESSION_S}s` });
+    reply.setCookie(ADMIN_COOKIE, token, cookieOpts);
+    await track(prisma, user.id, 'admin_login', {});
+    return { ok: true };
+  });
+
+  app.post('/auth/admin-session/logout', async (req, reply) => {
+    if (!origins.has(String(req.headers.origin ?? ''))) throw new HttpError(403, 'csrf_origin');
+    reply.clearCookie(ADMIN_COOKIE, { path: '/' });
+    return { ok: true };
+  });
   const admin = { onRequest: [requireAdmin] };
 
   app.get<{ Params: { id: string } }>('/admin/users/:id', admin, async (req) => {

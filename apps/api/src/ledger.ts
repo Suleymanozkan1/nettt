@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient, Currency } from '@prisma/client';
 import { HttpError } from './errors';
+import { metrics } from './metrics';
 
 type Tx = Prisma.TransactionClient;
 
@@ -51,6 +52,7 @@ export async function rewardsPaused(prisma: PrismaClient, limit: number): Promis
     }
   }
   cache = { at: Date.now(), paused };
+  metrics.rewardsPaused.set(paused ? 1 : 0);
   return paused;
 }
 

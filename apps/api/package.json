@@ -15,8 +15,11 @@
   },
   "dependencies": {
     "@colyseus/core": "0.16.26",
+    "@colyseus/redis-driver": "~0.16.1",
+    "@colyseus/redis-presence": "~0.16.4",
     "@colyseus/schema": "^3.0.76",
     "@colyseus/ws-transport": "~0.16.5",
+    "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^11.1.0",
     "@fastify/helmet": "^13.0.2",
     "@fastify/jwt": "^10.0.0",

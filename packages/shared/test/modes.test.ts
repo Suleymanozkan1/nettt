@@ -37,9 +37,9 @@ describe('weekly challenge', () => {
 
 describe('special event multipliers', () => {
   it('boost fans/credits, clamp to ×1–×3, never touch gems, respect the cap', () => {
-    expect(computeRunRewards(run())).toEqual({ fans: 43, credits: 40, gems: 1 });
-    expect(computeRunRewards(run(), { fans: 2, credits: 1.5 })).toEqual({ fans: 86, credits: 60, gems: 1 });
-    expect(computeRunRewards(run(), { fans: 10, credits: 0.1 })).toEqual({ fans: 129, credits: 40, gems: 1 });
+    expect(computeRunRewards(run())).toEqual({ fans: 43, credits: 18, gems: 1 });
+    expect(computeRunRewards(run(), { fans: 2, credits: 1.5 })).toEqual({ fans: 86, credits: 27, gems: 1 });
+    expect(computeRunRewards(run(), { fans: 10, credits: 0.1 })).toEqual({ fans: 129, credits: 18, gems: 1 });
     expect(computeRunRewards(run({ score: 5000 }), { fans: 1, credits: 3 }).credits).toBe(RUN_CREDIT_CAP);
   });
 });

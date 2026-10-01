@@ -1,16 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeRunRewards, playerLevelForFans, fansForPlayerLevel, checkDaily, DAILY_REWARDS, dailyMissions,
-  applyRunToMission, CATALOG, UPGRADES, upgradeCost, RUN_CREDIT_CAP, type RunSummary,
+  applyRunToMission, CATALOG, UPGRADES, upgradeCost, RUN_CREDIT_CAP, applyDailyPacing, FULL_REWARD_SHOWS_PER_DAY,
+  RUN_GEMS_PER_DAY, type RunSummary,
 } from '../src';
 
 const run = (o: Partial<RunSummary> = {}): RunSummary => ({ score: 30, fits: 20, perfects: 5, misses: 3, maxCombo: 3, level: 2, bossCleared: 0, revives: 0, durationMs: 60000, ...o });
 
 describe('run rewards', () => {
   it('derives fans/credits/gems from server summary and caps credits', () => {
-    expect(computeRunRewards(run())).toEqual({ fans: 30, credits: 15, gems: 0 });
-    expect(computeRunRewards(run({ bossCleared: 1, score: 100 }))).toEqual({ fans: 55, credits: 70, gems: 1 });
+    expect(computeRunRewards(run())).toEqual({ fans: 30, credits: 6, gems: 0 });
+    expect(computeRunRewards(run({ bossCleared: 1, score: 100 }))).toEqual({ fans: 55, credits: 30, gems: 1 });
     expect(computeRunRewards(run({ score: 100000 })).credits).toBe(RUN_CREDIT_CAP);
+  });
+});
+
+describe('daily pacing ("tired audience")', () => {
+  it('pays full credits for the first shows of the day, then 25%; fans never reduced; gems capped', () => {
+    const r = { fans: 40, credits: 100, gems: 2 };
+    expect(applyDailyPacing(r, 0, 0)).toEqual({ fans: 40, credits: 100, gems: 2, tired: false });
+    expect(applyDailyPacing(r, FULL_REWARD_SHOWS_PER_DAY - 1, 0).tired).toBe(false);
+    expect(applyDailyPacing(r, FULL_REWARD_SHOWS_PER_DAY, 0)).toEqual({ fans: 40, credits: 25, gems: 2, tired: true });
+    expect(applyDailyPacing(r, 0, RUN_GEMS_PER_DAY - 1).gems).toBe(1);
+    expect(applyDailyPacing(r, 0, RUN_GEMS_PER_DAY + 2).gems).toBe(0);
   });
 });
 
@@ -64,6 +76,7 @@ describe('catalog', () => {
   it('has unique ids, free defaults and increasing upgrade costs', () => {
     expect(new Set(CATALOG.map((c) => c.id)).size).toBe(CATALOG.length);
     expect(CATALOG.filter((c) => c.price === 0)).toHaveLength(2);
+    expect(CATALOG.filter((c) => c.price === 0).map((c) => c.id).sort()).toEqual(['char_fox', 'lamp_candle']);
     for (const u of UPGRADES) for (let i = 1; i < u.costs.length; i++) expect(u.costs[i]!).toBeGreaterThan(u.costs[i - 1]!);
     expect(upgradeCost('tolerance', 3)).toBeNull();
   });

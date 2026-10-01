@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { StageScene } from './game/StageScene';
 import { App } from './ui/app';
+import { parseInviteUrl } from '@stage/shared';
 import './styles.css';
 
 const game = new Phaser.Game({
@@ -33,6 +34,11 @@ function pauseForBackground(): void {
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) pauseForBackground(); });
 if (Capacitor.isNativePlatform()) {
+  // Deep links: golgekuklaci://duel/<code> (validated; anything else is ignored).
+  void CapApp.addListener('appUrlOpen', ({ url }) => {
+    const code = parseInviteUrl(url);
+    if (code) app.openInvite(code);
+  });
   void CapApp.addListener('pause', pauseForBackground);
   void CapApp.addListener('backButton', () => {
     const screen = document.getElementById('ui')?.dataset.screen;

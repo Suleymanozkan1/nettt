@@ -25,7 +25,20 @@ async function press(page: Page, isMobile: boolean): Promise<void> {
   else await page.mouse.click(x, y);
 }
 
+/** Counts WebAudio oscillators started and navigator.vibrate calls (sound + haptics actually fired). */
+async function spyFeedback(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __fx: { sound: number; vibrate: number } };
+    w.__fx = { sound: 0, vibrate: 0 };
+    const orig = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function (this: AudioContext) { w.__fx.sound++; return orig.call(this); };
+    Object.defineProperty(navigator, 'vibrate', { configurable: true, writable: true, value: () => { w.__fx.vibrate++; return true; } });
+  });
+}
+const fx = (page: Page) => page.evaluate(() => (window as unknown as { __fx: { sound: number; vibrate: number } }).__fx);
+
 test('full show: tutorial → real taps → lights out → server-verified results → restart', async ({ page, isMobile }) => {
+  await spyFeedback(page);
   await enter(page);
   await page.getByTestId('play').click();
   await expect(page.getByTestId('tutorial')).toBeVisible();
@@ -52,6 +65,10 @@ test('full show: tutorial → real taps → lights out → server-verified resul
   const end = (await debug(page))!;
   expect(end.state).toBe('dead');
   expect(end.lives).toBe(0);
+  // Every lost spotlight played a sound and a vibration (sound + haptics enabled by default).
+  const feedback = await fx(page);
+  expect(feedback.sound).toBeGreaterThanOrEqual(3);
+  expect(feedback.vibrate).toBeGreaterThanOrEqual(3);
   await page.getByTestId('results').click();
   await expect(page.getByTestId('verified')).toBeVisible({ timeout: 10_000 });
   // The server replayed the recorded inputs and reached exactly the client's score.
@@ -94,6 +111,28 @@ test('meta screens: daily claim, missions, shop, leaderboard, settings persist',
   await page.reload();
   await page.getByRole('button', { name: /Ayarlar/ }).click();
   await expect(page.getByTestId('toggle-sound')).not.toBeChecked();
+});
+
+test('revive: spend gems to continue after the lights go out (server charges them)', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop-mouse', 'one revive run is enough');
+  await enter(page);
+  const me = await page.evaluate(async () => {
+    const token = localStorage.getItem('stage.token');
+    return (await (await fetch('http://localhost:3000/me', { headers: { authorization: `Bearer ${token}` } })).json()) as { id: string };
+  });
+  execSync(`pnpm --filter @stage/api exec tsx --env-file-if-exists=.env scripts/set-balance.ts ${me.id} gems 10`, { stdio: 'ignore' });
+  await page.reload();
+  await expect(page.getByTestId('gems')).toHaveText('10');
+  await page.getByTestId('play').click();
+  await expect(page.getByTestId('revive')).toBeVisible({ timeout: 40_000 });
+  await page.getByTestId('revive').click();
+  await expect.poll(async () => (await debug(page))?.state).toBe('active');
+  expect((await debug(page))!.lives).toBe(1);
+  await expect(page.getByTestId('results')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('results').click();
+  await expect(page.getByTestId('verified')).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Ana sayfa' }).click();
+  await expect(page.getByTestId('gems')).toHaveText('5'); // 10 − 5 revive, charged by the server replay
 });
 
 test('pause, resume and end the show from the pause menu', async ({ page }) => {
@@ -145,6 +184,25 @@ test('live duel: two players, server-decided result', async ({ browser }) => {
   for (const { page } of players) await expect(page.getByTestId('duel-result')).toBeVisible({ timeout: 60_000 });
   await expect(players[0]!.page.getByText('Skorlar sunucu tarafından hesaplandı')).toBeVisible();
   for (const { ctx } of players) await ctx.close();
+});
+
+test('friend invite: private duel via ?duel= link', async ({ browser }) => {
+  test.skip(test.info().project.name !== 'desktop-mouse', 'one invite run is enough');
+  const mk = async (name: string) => { const ctx = await browser.newContext({ reducedMotion: 'reduce' }); const page = await ctx.newPage(); await enter(page, name); return { ctx, page }; };
+  const host = await mk('Davet Eden');
+  await host.page.getByRole('button', { name: /Düello/ }).click();
+  await host.page.getByTestId('invite-friend').click();
+  const code = (await host.page.getByTestId('invite-code').textContent({ timeout: 15_000 }))!.trim();
+  const link = (await host.page.getByTestId('invite-link').textContent())!;
+  expect(link).toContain(`?duel=${code}`);
+  const friend = await mk('Davetli');
+  await friend.page.goto(`/?debug=1&duel=${code}`);
+  for (const p of [host.page, friend.page]) await expect(p.getByTestId('opponents')).toBeVisible({ timeout: 20_000 });
+  for (const p of [host.page, friend.page]) await expect(p.getByTestId('duel-result')).toBeVisible({ timeout: 60_000 });
+  // A malformed invite is ignored, not acted on.
+  await friend.page.goto('/?debug=1&duel=%3Cscript%3E');
+  await expect(friend.page.getByTestId('play')).toBeVisible();
+  for (const x of [host, friend]) await x.ctx.close();
 });
 
 test('admin panel: login, economy stats, pause/resume rewards', async ({ page, request }) => {

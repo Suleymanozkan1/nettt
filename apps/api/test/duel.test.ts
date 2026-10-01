@@ -14,7 +14,7 @@ let rt: Server;
 beforeAll(async () => {
   app = await makeApp();
   const config = loadConfig({ ...process.env, JWT_SECRET: 'test-secret-test-secret-test-secret-1234' });
-  rt = await startRealtime(PORT, { prisma, config });
+  rt = await startRealtime(PORT, { prisma, config }, {});
 });
 afterAll(async () => { await rt.gracefullyShutdown(false); await app.close(); });
 beforeEach(async () => { await resetDb(); await prisma.$executeRawUnsafe('TRUNCATE "DuelMatch" CASCADE'); });
@@ -43,6 +43,18 @@ function bestTap(sim: RunSim, from: number): number {
 describe('live duel (Colyseus)', () => {
   it('rejects unauthenticated joins', async () => {
     await expect(join('not-a-token')).rejects.toThrow();
+  });
+
+  it('private invite rooms are hidden from quick match and joinable by code', async () => {
+    const a = await guest(app); const b = await guest(app); const c = await guest(app);
+    const ca = new Client(`ws://localhost:${PORT}`); ca.auth.token = a.token;
+    const host = await ca.create('duel', { private: true });
+    const quick = await join(c.token);
+    expect(quick.roomId).not.toBe(host.roomId);
+    const cb = new Client(`ws://localhost:${PORT}`); cb.auth.token = b.token;
+    const friend = await cb.joinById(host.roomId);
+    expect(friend.roomId).toBe(host.roomId);
+    await Promise.all([host.leave(), friend.leave(), quick.leave()]);
   });
 
   it('one account cannot take two seats, even with parallel joins', async () => {

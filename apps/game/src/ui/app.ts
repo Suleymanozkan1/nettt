@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { CATALOG, DEFAULT_CHARACTER, DEFAULT_PARAMS, DEFAULT_SKIN, MAX_REVIVES, ROUNDS_PER_LEVEL, BOSS_EVERY, startLives, type RunInput, type RunParams, type RunSummary, type SimEvent } from '@stage/shared';
+import { FULL_REWARD_SHOWS_PER_DAY, CATALOG, DEFAULT_CHARACTER, DEFAULT_PARAMS, DEFAULT_SKIN, MAX_REVIVES, ROUNDS_PER_LEVEL, BOSS_EVERY, startLives, type RunInput, type RunParams, type RunSummary, type SimEvent } from '@stage/shared';
 import type { Room } from 'colyseus.js';
 import { api, ApiError, type ActiveEvent, type FinishResult, type Profile, type RunMode } from '../lib/api';
-import { joinDuel, type DuelResult, type DuelStateView } from '../lib/duel';
+import { joinDuel, type DuelJoin, type DuelResult, type DuelStateView } from '../lib/duel';
+import { INVITE_CODE, inviteLinks, parseInviteUrl } from '@stage/shared';
 import { setDailyReminder } from '../lib/reminders';
 import { setSoundEnabled, sfx } from '../lib/audio';
 import { setHapticsEnabled } from '../lib/haptics';
@@ -32,6 +33,17 @@ export class App {
   private duel: { room: Room<DuelStateView>; finishedLocal: boolean } | null = null;
   /** Incremented on every cancel, so a join that resolves after "Vazgeç" leaves immediately. */
   private duelAttempt = 0;
+  /** Join mode for the next duel lobby (quick match, new private invite, or an invite code). */
+  private duelJoin: DuelJoin = { kind: 'quick' };
+  private pendingInvite: string | null = null;
+
+  /** Opens the duel lobby for an invite code coming from a deep link or ?duel= web link. */
+  openInvite(code: string): void {
+    if (!INVITE_CODE.test(code)) return;
+    void this.leaveDuel();
+    this.duelJoin = { kind: 'code', code };
+    this.show('duel');
+  }
   private menu3dModule: typeof import('../menu3d/Menu3D') | null = null;
 
   constructor(private readonly root: HTMLElement, private readonly game: Phaser.Game) {}
@@ -51,6 +63,10 @@ export class App {
       if (e instanceof ApiError && e.code !== 'offline') this.bootError = errText(e);
     }
     this.show(this.profile && !this.profile.onboarded ? 'onboarding' : 'home');
+    // Web invite link (?duel=CODE): validated by parseInviteUrl before anything happens.
+    const invite = parseInviteUrl(location.href);
+    if (invite && this.profile?.onboarded) this.openInvite(invite);
+    else if (invite) this.pendingInvite = invite;
   }
 
   async refresh(): Promise<void> {
@@ -319,7 +335,8 @@ export class App {
         h('span', {}, `🪙 +${result.rewards.credits}`),
         result.rewards.gems ? h('span', {}, `💎 +${result.rewards.gems}`) : null,
         h('small', { class: 'muted', 'data-testid': 'verified' }, '✔ Sunucu tarafından doğrulandı'),
-        result.rewardsPaused ? h('small', { class: 'error' }, 'Ödüller oyun ekibi tarafından geçici olarak durduruldu.') : null) : null,
+        result.rewardsPaused ? h('small', { class: 'error' }, 'Ödüller oyun ekibi tarafından geçici olarak durduruldu.') : null,
+        result.tiredAudience ? h('small', { class: 'muted', 'data-testid': 'tired' }, `Seyirci bugün yoruldu: günün ilk ${FULL_REWARD_SHOWS_PER_DAY} gösterisinden sonra jeton ödülü %25. Hayranlar tam sayılır. Biraz mola iyi gelir!`) : null) : null,
       result ? h('ul', { class: 'mission-mini' }, ...result.missions.map((m) => h('li', { class: m.completed ? 'done' : '' }, `${m.label}: ${m.progress}/${m.target}`))) : null,
       error ? h('p', { class: 'error' }, error) : null,
       offline ? h('p', { class: 'muted' }, 'Antrenman gösterisi — kaydedilmedi.') : null,
@@ -480,7 +497,10 @@ export class App {
   private onboarding(): HTMLElement {
     const input = h('input', { type: 'text', maxlength: 20, value: this.profile?.displayName ?? '', 'data-testid': 'name-input', 'aria-label': 'Sahne adın' });
     const go = async () => {
-      try { await api.onboarding(input.value.trim()); await this.refresh(); this.show('home'); }
+      try {
+        await api.onboarding(input.value.trim()); await this.refresh(); this.show('home');
+        if (this.pendingInvite) { const code = this.pendingInvite; this.pendingInvite = null; this.openInvite(code); }
+      }
       catch (e) { toast(e instanceof ApiError && e.code === 'validation_error' ? '2–20 harf, rakam, boşluk, _ veya -' : errText(e), 'error'); }
     };
     return h('div', { class: 'panel modal' },
@@ -508,25 +528,48 @@ export class App {
     const panel = h('div', { class: 'panel modal', 'data-testid': 'duel-lobby' }, h('h2', {}, '⚔ Canlı Düello'),
       h('p', { class: 'muted' }, '2–4 kuklacı aynı gösteriyi aynı anda oynar. Skorları sunucu hesaplar; en yüksek skor kazanır (günde ilk 3 galibiyet 🪙30).'),
       h('p', { 'data-testid': 'duel-status' }, 'Bağlanılıyor…'),
+      h('div', { 'data-testid': 'invite-box' }),
       h('ul', { class: 'mission-mini', 'data-testid': 'duel-players' }),
-      h('button', { onclick: () => { void this.leaveDuel(); this.show('home'); } }, 'Vazgeç'));
+      this.duelJoin.kind === 'quick' ? h('div', { class: 'row' },
+        h('button', { 'data-testid': 'invite-friend', onclick: () => { void this.leaveDuel(); this.duelJoin = { kind: 'invite' }; this.show('duel'); } }, '👥 Arkadaşını davet et'),
+        h('button', { onclick: () => {
+          const code = window.prompt('Davet kodu')?.trim() ?? '';
+          if (INVITE_CODE.test(code)) this.openInvite(code); else if (code) toast('Geçersiz davet kodu', 'error');
+        } }, 'Kodla katıl')) : null,
+      h('button', { onclick: () => { void this.leaveDuel(); this.duelJoin = { kind: 'quick' }; this.show('home'); } }, 'Vazgeç'));
     if (this.offline) { panel.querySelector('[data-testid="duel-status"]')!.textContent = 'Düello için bağlantı gerekli.'; return panel; }
-    if (!this.duel) void this.connectDuel();
+    if (!this.duel) void this.connectDuel(this.duelJoin);
     return panel;
   }
 
-  private async connectDuel(): Promise<void> {
+  private showInvite(code: string): void {
+    const { deepLink, webLink } = inviteLinks(code, location.origin.startsWith('http') ? location.origin : 'https://golgekuklaci.app');
+    const share = async () => {
+      try {
+        if (navigator.share) await navigator.share({ title: 'Gölge Kuklacı düellosu', text: `Benimle düello yap! Kod: ${code}`, url: webLink });
+        else { await navigator.clipboard.writeText(webLink); toast('Davet bağlantısı kopyalandı', 'info'); }
+      } catch { /* share cancelled */ }
+    };
+    this.root.querySelector('[data-testid="invite-box"]')?.replaceChildren(
+      h('p', {}, 'Davet kodu: ', h('b', { 'data-testid': 'invite-code' }, code)),
+      h('small', { class: 'muted', 'data-testid': 'invite-link' }, webLink), h('br'),
+      h('small', { class: 'muted' }, `Uygulamada: ${deepLink}`),
+      h('button', { onclick: share }, '📤 Bağlantıyı paylaş'));
+  }
+
+  private async connectDuel(how: DuelJoin): Promise<void> {
     const attempt = ++this.duelAttempt;
     let room: Room<DuelStateView>;
     try {
-      room = await joinDuel();
+      room = await joinDuel(how);
       if (attempt !== this.duelAttempt) { await room.leave().catch(() => undefined); return; }
     } catch {
       if (attempt !== this.duelAttempt) return;
       const st = this.root.querySelector('[data-testid="duel-status"]');
-      if (st) st.textContent = 'Düello sunucusuna bağlanılamadı.';
+      if (st) st.textContent = how.kind === 'code' ? 'Davet geçersiz, dolu ya da gösteri başlamış.' : 'Düello sunucusuna bağlanılamadı.';
       return;
     }
+    if (how.kind === 'invite') this.showInvite(room.roomId);
     this.duel = { room, finishedLocal: false };
     room.onStateChange((state) => this.onDuelState(state));
     room.onMessage('start', ({ seed }: { seed: number }) => this.startDuelRun(seed));
@@ -548,7 +591,7 @@ export class App {
     this.root.querySelector('[data-testid="duel-players"]')?.replaceChildren(...rows);
     this.root.querySelector('[data-testid="opponents"]')?.replaceChildren(...rows);
     const st = this.root.querySelector('[data-testid="duel-status"]');
-    if (st) st.textContent = state.phase === 'waiting' ? 'Rakip bekleniyor…' : state.phase === 'countdown' ? 'Perde açılıyor… hazır ol!' : '';
+    if (st) st.textContent = state.phase === 'waiting' ? (this.duelJoin.kind === 'invite' ? 'Arkadaşın bekleniyor…' : 'Rakip bekleniyor…') : state.phase === 'countdown' ? 'Perde açılıyor… hazır ol!' : '';
   }
 
   private startDuelRun(seed: number): void {
@@ -582,7 +625,7 @@ export class App {
       h('ol', { class: 'board' }, ...r.ranking.map((p, i) => h('li', { class: p.sessionId === me ? 'me' : '' }, h('span', {}, `#${i + 1}`), h('span', {}, p.name), h('b', {}, String(p.score))))),
       r.winner === me ? h('p', {}, r.reward ? `🪙 +${r.reward}` : 'Bugünkü ödüllü galibiyet sınırına ulaştın.') : null,
       h('small', { class: 'muted' }, '✔ Skorlar sunucu tarafından hesaplandı'),
-      h('button', { class: 'primary', onclick: () => this.show('duel') }, 'Yeni düello'),
+      h('button', { class: 'primary', onclick: () => { this.duelJoin = { kind: 'quick' }; this.show('duel'); } }, 'Yeni düello'),
       h('button', { onclick: () => this.show('home') }, 'Ana sayfa')));
   }
 }

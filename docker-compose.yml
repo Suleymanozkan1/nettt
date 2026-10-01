@@ -23,6 +23,8 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars)}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      METRICS_TOKEN: ${METRICS_TOKEN:-local-metrics-token-change-me}
     ports: ["3000:3000"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -35,6 +37,9 @@ services:
       DATABASE_URL: postgresql://stage:${POSTGRES_PASSWORD:-stage}@postgres:5432/stagestack
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars)}
       REALTIME_PORT: "2567"
+      # Shared presence/driver: run several realtime replicas behind a load balancer.
+      REDIS_URL: redis://redis:6379
+      METRICS_TOKEN: ${METRICS_TOKEN:-local-metrics-token-change-me}
     ports: ["2567:2567"]
     depends_on: [api]
   backup:
@@ -55,6 +60,46 @@ services:
         VITE_REALTIME_URL: "${VITE_REALTIME_URL:-ws://localhost:2567}"
     ports: ["8080:80"]
     depends_on: [api]
+  # --- profile "tls": HTTPS reverse proxy (auto Let's Encrypt with real domains) ---
+  caddy:
+    image: caddy:2-alpine
+    profiles: [tls]
+    ports: ["80:80", "443:443"]
+    environment:
+      GAME_DOMAIN: ${GAME_DOMAIN:-game.localhost}
+      API_DOMAIN: ${API_DOMAIN:-api.localhost}
+      RT_DOMAIN: ${RT_DOMAIN:-rt.localhost}
+      TLS_ISSUER: ${TLS_ISSUER:-internal}
+    volumes: [./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro, caddy_data:/data]
+    depends_on: [api, realtime, game]
+  # --- profile "monitoring": metrics + alerting ---
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: [monitoring]
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    ports: ["9090:9090"]
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    configs:
+      - source: metrics_token
+        target: /etc/prometheus/metrics_token
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    profiles: [monitoring]
+    ports: ["9093:9093"]
+    volumes: [./deploy/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro]
+  alert-sink:
+    # Minimal webhook receiver that logs alerts (stand-in for Slack/Discord/PagerDuty relays).
+    image: mendhak/http-https-echo:35
+    profiles: [monitoring]
+    environment: { HTTP_PORT: "8080" }
+
+configs:
+  metrics_token:
+    content: ${METRICS_TOKEN:-local-metrics-token-change-me}
+
 volumes:
+  caddy_data:
   pgdata:
   backups:

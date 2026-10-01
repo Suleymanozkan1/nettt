@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { GuestAuthBody, LoginBody, RegisterBody } from '@stage/shared';
+import { GuestAuthBody, LoginBody, RegisterBody, checkPow } from '@stage/shared';
+import { PowStore } from '../pow-store';
 import { HttpError, parse } from '../errors';
 import { hashDeviceId, hashPassword, verifyPassword } from '../password';
 import { track } from '../app';
@@ -8,8 +9,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   const { prisma, config } = app.deps;
   const strict = { config: { rateLimit: { max: config.AUTH_RATE_LIMIT_PER_MIN, timeWindow: '1 minute' } } };
 
+  const pow = new PowStore(app.deps.redis);
+
+  /** Proof-of-work challenge required by /auth/guest (raises the cost of mass account creation). */
+  app.get('/auth/challenge', strict, async () => ({ ...(await pow.issue()), bits: config.POW_BITS }));
+
   app.post('/auth/guest', strict, async (req) => {
-    const { deviceId } = parse(GuestAuthBody, req.body);
+    const { deviceId, powId, powNonce } = parse(GuestAuthBody, req.body);
+    const salt = await pow.consume(powId);
+    if (!salt || !checkPow(salt, powNonce, config.POW_BITS)) throw new HttpError(403, 'pow_invalid');
     const deviceIdHash = hashDeviceId(deviceId, config.JWT_SECRET);
     let user = await prisma.user.findUnique({ where: { deviceIdHash } });
     if (!user) {

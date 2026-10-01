@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { MAX_INPUTS } from './rules';
 
-export const GuestAuthBody = z.object({ deviceId: z.string().min(16).max(128).regex(/^[A-Za-z0-9_-]+$/) });
+export const GuestAuthBody = z.object({
+  deviceId: z.string().min(16).max(128).regex(/^[A-Za-z0-9_-]+$/),
+  powId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),
+  powNonce: z.string().min(1).max(12),
+});
 export const RegisterBody = z.object({ email: z.email().max(254), password: z.string().min(8).max(128), displayName: z.string().min(2).max(20).regex(/^[\p{L}\p{N} _-]+$/u).optional() });
 export const LoginBody = z.object({ email: z.email().max(254), password: z.string().min(1).max(128) });
 export const SettingsBody = z.object({

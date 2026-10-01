@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { randomBytes } from 'node:crypto';
-import { RunSim, type RunInput, type RunParams } from '@stage/shared';
+import { RunSim, solvePow, type RunInput, type RunParams } from '@stage/shared';
 import { buildApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { clearBreakerCache } from '../src/ledger';
@@ -10,7 +10,7 @@ export const prisma = new PrismaClient();
 
 export async function makeApp(env: Record<string, string> = {}): Promise<FastifyInstance> {
   clearBreakerCache();
-  const config = loadConfig({ ...process.env, JWT_SECRET: 'test-secret-test-secret-test-secret-1234', CORS_ORIGINS: 'http://localhost:5173', AUTH_RATE_LIMIT_PER_MIN: '10000', RATE_LIMIT_PER_MIN: '100000', RUN_RATE_LIMIT_PER_MIN: '100000', ...env });
+  const config = loadConfig({ ...process.env, JWT_SECRET: 'test-secret-test-secret-test-secret-1234', CORS_ORIGINS: 'http://localhost:5173', AUTH_RATE_LIMIT_PER_MIN: '10000', POW_BITS: '4', RATE_LIMIT_PER_MIN: '100000', RUN_RATE_LIMIT_PER_MIN: '100000', ...env });
   return buildApp({ prisma, config, logger: false });
 }
 
@@ -20,11 +20,17 @@ export async function resetDb(): Promise<void> {
 }
 
 export async function guest(app: FastifyInstance): Promise<{ token: string; headers: Record<string, string>; id: string }> {
-  const res = await app.inject({ method: 'POST', url: '/auth/guest', payload: { deviceId: randomBytes(16).toString('hex') } });
+  const res = await app.inject({ method: 'POST', url: '/auth/guest', payload: await guestBody(app, randomBytes(16).toString('hex')) });
   const token = res.json().token as string;
   const headers = { authorization: `Bearer ${token}` };
   const me = await app.inject({ method: 'GET', url: '/me', headers });
   return { token, headers, id: me.json().id };
+}
+
+/** Fetches and solves a proof-of-work challenge, returning a valid /auth/guest body. */
+export async function guestBody(app: FastifyInstance, deviceId: string): Promise<{ deviceId: string; powId: string; powNonce: string }> {
+  const ch = (await app.inject({ method: 'GET', url: '/auth/challenge' })).json() as { id: string; salt: string; bits: number };
+  return { deviceId, powId: ch.id, powNonce: solvePow(ch.salt, ch.bits) };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { computeRunRewards, REVIVE_GEM_COST, utcDay } from '@stage/shared';
-import { backdateRun, guest, makeApp, playInputs, prisma, resetDb } from './helpers';
+import { computeRunRewards, REVIVE_GEM_COST, solvePow, utcDay } from '@stage/shared';
+import { backdateRun, guest, guestBody, makeApp, playInputs, prisma, resetDb } from './helpers';
 import { clearBreakerCache } from '../src/ledger';
 
 let app: FastifyInstance;
@@ -22,8 +22,8 @@ async function playRun(headers: Record<string, string>, perfect = 5, opts: { rev
 describe('auth', () => {
   it('guest login is stable per device and /me needs a token', async () => {
     expect((await app.inject({ method: 'GET', url: '/me' })).statusCode).toBe(401);
-    const a = await app.inject({ method: 'POST', url: '/auth/guest', payload: { deviceId: 'device-aaaaaaaaaaaaaaaa' } });
-    const b = await app.inject({ method: 'POST', url: '/auth/guest', payload: { deviceId: 'device-aaaaaaaaaaaaaaaa' } });
+    const a = await app.inject({ method: 'POST', url: '/auth/guest', payload: await guestBody(app, 'device-aaaaaaaaaaaaaaaa') });
+    const b = await app.inject({ method: 'POST', url: '/auth/guest', payload: await guestBody(app, 'device-aaaaaaaaaaaaaaaa') });
     const meA = await app.inject({ method: 'GET', url: '/me', headers: { authorization: `Bearer ${a.json().token}` } });
     const meB = await app.inject({ method: 'GET', url: '/me', headers: { authorization: `Bearer ${b.json().token}` } });
     expect(meA.json().id).toBe(meB.json().id);
@@ -31,7 +31,7 @@ describe('auth', () => {
   });
 
   it('rejects invalid input and bad tokens', async () => {
-    expect((await app.inject({ method: 'POST', url: '/auth/guest', payload: { deviceId: 'x' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: '/auth/guest', payload: { ...(await guestBody(app, 'device-bbbbbbbbbbbbbbbb')), deviceId: 'x' } })).statusCode).toBe(400);
     expect((await app.inject({ method: 'GET', url: '/me', headers: { authorization: 'Bearer nope' } })).statusCode).toBe(401);
   });
 
@@ -45,6 +45,26 @@ describe('auth', () => {
     const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'a@x.io', password: 'hunter2hunter2' } });
     const me = await app.inject({ method: 'GET', url: '/me', headers: { authorization: `Bearer ${login.json().token}` } });
     expect(me.json()).toMatchObject({ id: g.id, displayName: 'Alice', registered: true });
+  });
+});
+
+describe('proof-of-work for guest accounts', () => {
+  it('requires a solved, unexpired, single-use challenge', async () => {
+    const strictApp = await makeApp({ POW_BITS: '12' });
+    const missing = await strictApp.inject({ method: 'POST', url: '/auth/guest', payload: { deviceId: 'device-cccccccccccccccc' } });
+    expect(missing.statusCode).toBe(400);
+    const ch = (await strictApp.inject({ method: 'GET', url: '/auth/challenge' })).json();
+    expect(ch.bits).toBe(12);
+    const unknown = await strictApp.inject({ method: 'POST', url: '/auth/guest', payload: { deviceId: 'device-cccccccccccccccc', powId: 'unknownchallenge', powNonce: '1' } });
+    expect(unknown.statusCode).toBe(403);
+    const body = { deviceId: 'device-cccccccccccccccc', powId: ch.id, powNonce: solvePow(ch.salt, 12) };
+    expect((await strictApp.inject({ method: 'POST', url: '/auth/guest', payload: body })).statusCode).toBe(200);
+    expect((await strictApp.inject({ method: 'POST', url: '/auth/guest', payload: body })).statusCode).toBe(403); // single use
+    const ch2 = (await strictApp.inject({ method: 'GET', url: '/auth/challenge' })).json();
+    let bad = 0; while (solvePow(ch2.salt, 12) === String(bad)) bad++;
+    const wrong = await strictApp.inject({ method: 'POST', url: '/auth/guest', payload: { deviceId: 'device-cccccccccccccccc', powId: ch2.id, powNonce: String(bad) } });
+    expect(wrong.statusCode).toBe(403);
+    await strictApp.close();
   });
 });
 
@@ -104,6 +124,26 @@ describe('runs (server-authoritative)', () => {
     const s = await app.inject({ method: 'POST', url: '/runs', headers: g.headers });
     await app.inject({ method: 'POST', url: `/runs/${s.json().runId}/finish`, headers: g.headers, payload: { inputs: [{ t: 700, k: 'tap' }, { t: 710, k: 'tap' }] } });
     expect((await prisma.user.findUniqueOrThrow({ where: { id: g.id } })).flagged).toBe(false);
+  });
+
+  it('daily pacing: after 10 shows today credits drop to 25% and the response says so', async () => {
+    const g = await guest(app);
+    const today = new Date();
+    for (let i = 0; i < 10; i++) await prisma.run.create({ data: { userId: g.id, seed: i, params: {}, status: 'FINISHED', finishedAt: today } });
+    const { fin } = await playRun(g.headers, 8);
+    const body = fin.json();
+    expect(body.tiredAudience).toBe(true);
+    expect(body.rewards.credits).toBe(Math.floor(computeRunRewards(body.summary).credits * 0.25));
+    expect(body.rewards.fans).toBe(computeRunRewards(body.summary).fans);
+  });
+
+  it('flags a frame-perfect bot for review (score kept, hidden from boards)', async () => {
+    const g = await guest(app);
+    const { fin } = await playRun(g.headers, 30);
+    expect(fin.statusCode).toBe(200);
+    expect(fin.json().summary.perfects).toBe(30);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: g.id } })).flagged).toBe(true);
+    expect(await prisma.event.count({ where: { userId: g.id, type: 'suspicious_precision' } })).toBe(1);
   });
 
   it('rejects runs submitted faster than real time (speed hack)', async () => {
@@ -183,13 +223,13 @@ describe('shop / inventory / upgrades', () => {
 
   it('upgrades cost credits, cap at max and feed run params', async () => {
     const g = await guest(app);
-    await prisma.user.update({ where: { id: g.id }, data: { credits: 5000 } });
+    await prisma.user.update({ where: { id: g.id }, data: { credits: 6000 } });
     for (const expected of [1, 2, 3]) {
       const r = await app.inject({ method: 'POST', url: '/shop/upgrade', headers: g.headers, payload: { upgradeId: 'tolerance' } });
       expect(r.json().level).toBe(expected);
     }
     expect((await app.inject({ method: 'POST', url: '/shop/upgrade', headers: g.headers, payload: { upgradeId: 'tolerance' } })).statusCode).toBe(409);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: g.id } })).credits).toBe(5000 - 400 - 900 - 1600);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: g.id } })).credits).toBe(6000 - 600 - 1500 - 3000);
     const run = (await app.inject({ method: 'POST', url: '/runs', headers: g.headers })).json();
     expect(run.params.toleranceLevel).toBe(3);
   });

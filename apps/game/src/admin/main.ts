@@ -1,15 +1,16 @@
+import { CATALOG } from '@stage/shared';
 import { h } from '../ui/dom';
 import './admin.css';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
-const KEY = 'golge.admin.token';
 const root = document.getElementById('admin')!;
-let token: string | null = (() => { try { return sessionStorage.getItem(KEY); } catch { return null; } })();
 
+/** The admin session is an httpOnly SameSite=Strict cookie set by the API; no token is visible to JS. */
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    credentials: 'include',
+    headers: body !== undefined ? { 'content-type': 'application/json' } : {},
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -33,11 +34,9 @@ function login(): void {
   root.replaceChildren(h('h1', {}, 'Gölge Kuklacı · Yönetim'), h('section', {}, h('h2', {}, 'Giriş'),
     h('div', { class: 'row' }, email, pass, h('button', { class: 'primary', onclick: async () => {
       try {
-        token = (await call<{ token: string }>('POST', '/auth/login', { email: email.value, password: pass.value })).token;
-        await call('GET', '/admin/economy');
-        try { sessionStorage.setItem(KEY, token); } catch { /* ignore */ }
+        await call('POST', '/auth/admin-session', { email: email.value, password: pass.value });
         void dashboard();
-      } catch (e) { token = null; msg.replaceChildren(status(`Giriş başarısız: ${(e as Error).message}`, false)); }
+      } catch (e) { msg.replaceChildren(status(`Giriş başarısız: ${(e as Error).message}`, false)); }
     } }, 'Giriş')), msg,
     h('p', { class: 'muted' }, 'Yalnızca ADMIN rolündeki hesaplar. Rol her istekte sunucuda veritabanından kontrol edilir.')));
 }
@@ -78,7 +77,7 @@ async function usersSection(): Promise<HTMLElement> {
       call<{ user: UserRow; runs: { startedAt: string; status: string; score: number; mode: string; rejectReason: string | null }[] }>('GET', `/admin/users/${id}`),
       call<{ transactions: { createdAt: string; currency: string; amount: number; reason: string; refId: string }[] }>('GET', `/admin/transactions?userId=${id}`),
     ]);
-    const item = h('select', {}, ...['lamp_neon', 'lamp_moon', 'lamp_gold', 'char_owl', 'char_dragon'].map((i) => h('option', { value: i }, i)));
+    const item = h('select', {}, ...CATALOG.filter((c) => c.price > 0).map((c) => h('option', { value: c.id }, `${c.name} (${c.id})`)));
     const msg = h('div');
     out.replaceChildren(h('h2', {}, `${user.displayName} (${user.id})`),
       h('div', { class: 'row' },
@@ -120,11 +119,10 @@ async function dashboard(): Promise<void> {
   try {
     const sections = await Promise.all([economySection(), usersSection(), eventsSection()]);
     root.replaceChildren(h('div', { class: 'row' }, h('h1', {}, 'Gölge Kuklacı · Yönetim'),
-      h('button', { onclick: () => { token = null; try { sessionStorage.removeItem(KEY); } catch { /* ignore */ } login(); } }, 'Çıkış')), ...sections);
+      h('button', { onclick: async () => { await call('POST', '/auth/admin-session/logout').catch(() => undefined); login(); } }, 'Çıkış')), ...sections);
   } catch {
-    token = null;
     login();
   }
 }
 
-if (token) void dashboard(); else login();
+void dashboard();

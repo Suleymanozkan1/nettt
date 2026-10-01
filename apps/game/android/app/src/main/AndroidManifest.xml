@@ -23,6 +23,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Duel invites: golgekuklaci://duel/<code> (validated in the app by parseInviteUrl) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="golgekuklaci" android:host="duel" />
+            </intent-filter>
+
         </activity>
 
         <provider

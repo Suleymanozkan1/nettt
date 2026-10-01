@@ -179,7 +179,7 @@ describe('replayRun (server authority)', () => {
   });
 
   it('accepts a quit and rejects input after it', () => {
-    expect(replayRun(5, DEFAULT_PARAMS, [{ t: 1000, k: 'quit' }])).toEqual({ ok: true, summary: expect.objectContaining({ score: 0, fits: 0, durationMs: 1000 }) });
+    expect(replayRun(5, DEFAULT_PARAMS, [{ t: 1000, k: 'quit' }])).toEqual({ ok: true, fitErrors: [], summary: expect.objectContaining({ score: 0, fits: 0, durationMs: 1000 }) });
     expect(replayRun(5, DEFAULT_PARAMS, [{ t: 1000, k: 'quit' }, { t: 2000, k: 'tap' }]).ok).toBe(false);
   });
 });

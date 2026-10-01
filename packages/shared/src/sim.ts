@@ -64,6 +64,8 @@ export class RunSim {
   lives: number;
   lastT = 0;
   deathT = 0;
+  /** Fit error of every perfect/good tap (input to the server's superhuman-precision check). */
+  readonly fitErrors: number[] = [];
   private rounds = 0;
   private round: Round;
   private readonly rng: () => number;
@@ -160,6 +162,7 @@ export class RunSim {
     const error = Math.sqrt(dx * dx + ds * ds);
     let grade: Grade;
     let points = 0;
+    if (error < GOOD_ERROR) this.fitErrors.push(error);
     if (error <= perfectError(this.round.level, this.params)) {
       grade = 'perfect';
       this.combo += 1;
@@ -214,7 +217,23 @@ export class RunSim {
   }
 }
 
-export type ReplayResult = { ok: true; summary: RunSummary } | { ok: false; reason: string };
+export type ReplayResult = { ok: true; summary: RunSummary; fitErrors: number[] } | { ok: false; reason: string };
+
+export const SUPERHUMAN_MIN_FITS = 25;
+export const SUPERHUMAN_PERFECT_RATIO = 0.95;
+export const SUPERHUMAN_MEDIAN_ERROR = 0.02;
+
+/**
+ * Human taps jitter by tens of milliseconds, so even experts land perfect fits with a spread of errors.
+ * Many fits that are almost all perfect *and* whose median error is near zero (≈ ±3 ms) indicate a bot
+ * driving the open simulation. Used to flag accounts for review — never to change a verified score.
+ */
+export function looksSuperhuman(s: Pick<RunSummary, 'fits' | 'perfects'>, fitErrors: number[]): boolean {
+  if (s.fits < SUPERHUMAN_MIN_FITS || s.perfects / s.fits < SUPERHUMAN_PERFECT_RATIO) return false;
+  const sorted = [...fitErrors].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 1;
+  return median < SUPERHUMAN_MEDIAN_ERROR;
+}
 
 /**
  * Server-side authoritative replay. Any input the live client could not have produced rejects the run.
@@ -236,5 +255,5 @@ export function replayRun(seed: number, params: RunParams, inputs: RunInput[]): 
   }
   sim.advance(MAX_RUN_MS * 2);
   if (sim.state !== 'dead') return { ok: false, reason: 'run_not_over' };
-  return { ok: true, summary: sim.summary() };
+  return { ok: true, summary: sim.summary(), fitErrors: sim.fitErrors };
 }

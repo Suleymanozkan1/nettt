@@ -53,10 +53,12 @@ export class DuelRoom extends Room<DuelState> {
   private countdown: { clear(): void } | null = null;
   private verify!: (token: string) => { sub: string; tv?: number };
 
-  onCreate(): void {
+  onCreate(options?: { private?: unknown }): void {
+    // Private rooms (friend invites) are hidden from joinOrCreate; friends join by room id via an invite link.
+    if (options?.private === true) void this.setPrivate(true);
     this.setState(new DuelState());
     this.state.seed = randomInt(0, 2 ** 31);
-    this.verify = createVerifier({ key: DuelRoom.deps.config.JWT_SECRET, algorithms: ['HS256'] }) as typeof this.verify;
+    this.verify = createVerifier({ key: DuelRoom.deps.config.JWT_SECRET, algorithms: ['HS256'] }) as (token: string) => { sub: string; tv?: number };
     this.onMessage('tap', (client, msg: unknown) => {
       const t = (msg as { t?: unknown } | null)?.t;
       const seat = this.seats.get(client.sessionId);

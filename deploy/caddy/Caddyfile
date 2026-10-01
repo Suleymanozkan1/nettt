@@ -1,0 +1,33 @@
+# TLS-terminating reverse proxy (compose profile "tls").
+# Production: set GAME_DOMAIN / API_DOMAIN / RT_DOMAIN to real DNS names and TLS_ISSUER to an e-mail address →
+# Caddy obtains and renews Let's Encrypt certificates automatically. Local: TLS_ISSUER=internal (Caddy's own CA).
+(common) {
+	tls {$TLS_ISSUER:internal}
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
+
+{$GAME_DOMAIN:game.localhost} {
+	import common
+	reverse_proxy game:80
+}
+
+{$API_DOMAIN:api.localhost} {
+	import common
+	# /metrics is for Prometheus on the internal network only.
+	@metrics path /metrics
+	respond @metrics 404
+	reverse_proxy api:3000
+}
+
+{$RT_DOMAIN:rt.localhost} {
+	import common
+	@metrics path /metrics
+	respond @metrics 404
+	reverse_proxy realtime:2567
+}

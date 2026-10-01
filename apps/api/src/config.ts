@@ -15,6 +15,8 @@ const Env = z.object({
   TRUST_PROXY: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   /** Bearer token for GET /metrics. Without it the endpoint is only open outside production. */
   METRICS_TOKEN: z.string().min(16).optional(),
+  /** Proof-of-work difficulty (leading zero bits) for creating/logging in guest accounts. */
+  POW_BITS: z.coerce.number().int().min(0).max(24).default(16),
   NODE_ENV: z.string().default('development'),
 });
 

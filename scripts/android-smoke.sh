@@ -59,6 +59,11 @@ echo "== secure storage: JWT must not be stored in plain shared_prefs"
 adb shell run-as "$PKG" sh -c 'cat shared_prefs/*.xml 2>/dev/null' > "$OUT/shared_prefs.txt" || true
 if grep -q 'eyJhbGci' "$OUT/shared_prefs.txt"; then echo "FAIL: plaintext JWT in shared_prefs"; exit 1; fi
 
+echo "== deep link: golgekuklaci://duel/<code> opens the app's duel invite flow"
+adb shell am start -W -a android.intent.action.VIEW -d "golgekuklaci://duel/TestInvite01" "$PKG" | tee "$OUT/deeplink.txt"
+sleep 6; shot 06-deeplink; alive
+grep -q "Status: ok" "$OUT/deeplink.txt"
+
 echo "== frame stats"
 adb shell dumpsys gfxinfo "$PKG" > "$OUT/gfxinfo.txt"
 grep -E "Total frames rendered|Janky frames|50th percentile|90th percentile|99th percentile" "$OUT/gfxinfo.txt" || true

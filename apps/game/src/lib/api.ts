@@ -1,4 +1,4 @@
-import type { RunInput, RunParams, RunSummary, Settings, MissionKind } from '@stage/shared';
+import { solvePow, type RunInput, type RunParams, type RunSummary, type Settings, type MissionKind } from '@stage/shared';
 import { storage } from './storage';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
@@ -43,7 +43,7 @@ export type RunMode = 'normal' | 'challenge';
 export interface Mission { key: string; label: string; target: number; reward: number; progress: number; completed: boolean; claimed: boolean; kind?: MissionKind }
 export interface FinishResult {
   verified: boolean; summary: RunSummary; rewards: { fans: number; credits: number; gems: number };
-  rewardsPaused: boolean; newBest: boolean; mode: RunMode; event: { name: string } | null; missions: { key: string; label: string; progress: number; target: number; completed: boolean }[];
+  rewardsPaused: boolean; newBest: boolean; mode: RunMode; event: { name: string } | null; tiredAudience: boolean; missions: { key: string; label: string; progress: number; target: number; completed: boolean }[];
 }
 export interface ShopData {
   items: { id: string; kind: 'skin' | 'character'; name: string; price: number; currency: 'credits' | 'gems'; colors: number[]; owned: boolean }[];
@@ -58,7 +58,9 @@ export const api = {
     if (token) return;
     let device = await storage.get(DEVICE_KEY);
     if (!device) { device = randomDeviceId(); await storage.set(DEVICE_KEY, device); }
-    const r = await request<{ token: string }>('POST', '/auth/guest', { deviceId: device });
+    // Proof-of-work (anti account-farming): solved once per sign-in, typically well under a second.
+    const ch = await request<{ id: string; salt: string; bits: number }>('GET', '/auth/challenge');
+    const r = await request<{ token: string }>('POST', '/auth/guest', { deviceId: device, powId: ch.id, powNonce: solvePow(ch.salt, ch.bits) });
     token = r.token;
     await storage.set(TOKEN_KEY, token);
   },
