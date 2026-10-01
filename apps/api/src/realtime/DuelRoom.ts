@@ -45,6 +45,8 @@ export class DuelRoom extends Room<DuelState> {
   static deps: DuelDeps;
   maxClients = DUEL_MAX_PLAYERS;
   private seats = new Map<string, Seat>();
+  /** Users between authentication and onJoin — guards concurrent joins of the same account. */
+  private pending = new Set<string>();
   private startedAt = 0;
   private countdown: { clear(): void } | null = null;
   private verify!: (token: string) => { sub: string; tv?: number };
@@ -66,14 +68,25 @@ export class DuelRoom extends Room<DuelState> {
   async onAuth(_client: Client, _options: unknown, context: AuthContext): Promise<AuthData> {
     let payload: { sub: string; tv?: number };
     try { payload = this.verify(context.token ?? ''); } catch { throw new ServerError(401, 'unauthorized'); }
-    const user = await DuelRoom.deps.prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, displayName: true, character: true, tokenVersion: true, flagged: true } });
-    if (!user || (payload.tv ?? 0) !== user.tokenVersion) throw new ServerError(401, 'unauthorized');
-    if (user.flagged) throw new ServerError(403, 'flagged');
-    if ([...this.seats.values()].some((s) => s.userId === user.id)) throw new ServerError(409, 'already_in_room');
-    return { userId: user.id, name: user.displayName, character: user.character };
+    // Seats are only handed out before the show starts (a reservation can outlive the countdown).
+    if (this.state.phase !== 'waiting' && this.state.phase !== 'countdown') throw new ServerError(409, 'duel_started');
+    // Synchronous check-and-mark before any await, so two parallel joins of one account cannot both pass.
+    if (this.pending.has(payload.sub) || [...this.seats.values()].some((s) => s.userId === payload.sub)) throw new ServerError(409, 'already_in_room');
+    this.pending.add(payload.sub);
+    try {
+      const user = await DuelRoom.deps.prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, displayName: true, character: true, tokenVersion: true, flagged: true } });
+      if (!user || (payload.tv ?? 0) !== user.tokenVersion) throw new ServerError(401, 'unauthorized');
+      if (user.flagged) throw new ServerError(403, 'flagged');
+      return { userId: user.id, name: user.displayName, character: user.character };
+    } catch (err) {
+      this.pending.delete(payload.sub);
+      throw err;
+    }
   }
 
   onJoin(client: Client, _options: unknown, auth: AuthData): void {
+    this.pending.delete(auth.userId);
+    if (this.state.phase !== 'waiting' && this.state.phase !== 'countdown') { client.leave(4009); return; }
     const p = new DuelPlayer();
     p.name = auth.name;
     p.character = auth.character;
@@ -86,6 +99,7 @@ export class DuelRoom extends Room<DuelState> {
   onLeave(client: Client): void {
     const seat = this.seats.get(client.sessionId);
     const p = this.state.players.get(client.sessionId);
+    if (seat) this.pending.delete(seat.userId);
     if (!seat || !p) return;
     if (this.state.phase === 'waiting' || this.state.phase === 'countdown') {
       this.seats.delete(client.sessionId);
@@ -128,7 +142,8 @@ export class DuelRoom extends Room<DuelState> {
     if (this.state.phase !== 'playing') return;
     const now = this.elapsed();
     for (const seat of this.seats.values()) {
-      const sim = seat.sim!;
+      const sim = seat.sim;
+      if (!sim) continue;
       for (const t of seat.queue.splice(0)) {
         // Bounded by the server clock: no taps from the future, none hoarded from the past.
         if (t > now + DUEL_TAP_LEAD_MS || t < now - DUEL_TAP_LAG_MS || t < sim.lastT) { metrics.duelRejectedTaps.inc(); continue; }
@@ -139,7 +154,7 @@ export class DuelRoom extends Room<DuelState> {
       sim.advance(now - DUEL_TAP_LAG_MS);
     }
     this.syncPlayers();
-    const allDone = [...this.seats.values()].every((s) => s.sim!.state === 'dead');
+    const allDone = [...this.seats.values()].every((s) => !s.sim || s.sim.state === 'dead');
     if (allDone || now > DUEL_MAX_MS + DUEL_TAP_LAG_MS) void this.finish();
   }
 
@@ -155,9 +170,10 @@ export class DuelRoom extends Room<DuelState> {
   private async finish(): Promise<void> {
     if (this.state.phase === 'finished') return;
     this.state.phase = 'finished';
-    for (const seat of this.seats.values()) if (seat.sim!.state === 'active') seat.sim!.quit(Math.max(seat.sim!.lastT, this.elapsed()));
+    for (const seat of this.seats.values()) if (seat.sim?.state === 'active') seat.sim.quit(Math.max(seat.sim.lastT, this.elapsed()));
     this.syncPlayers();
     const ranking = [...this.seats.entries()]
+      .filter(([, s]) => s.sim)
       .map(([id, s]) => ({ sessionId: id, userId: s.userId, name: this.state.players.get(id)!.name, score: s.sim!.score, fits: s.sim!.fits }))
       .sort((a, b) => b.score - a.score || b.fits - a.fits);
     const top = ranking[0];

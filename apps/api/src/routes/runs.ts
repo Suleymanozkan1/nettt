@@ -31,9 +31,14 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
     if (body.mode === 'challenge') {
       // Weekly challenge: same seed for everyone this week, default params (upgrades don't apply).
       const week = isoWeekKey();
-      const today = await prisma.run.count({ where: { userId: uid, mode: 'challenge', startedAt: { gte: new Date(`${utcDay()}T00:00:00Z`) } } });
-      if (today >= CHALLENGE_ATTEMPTS_PER_DAY) throw new HttpError(429, 'challenge_attempts_used');
-      const run = await prisma.run.create({ data: { userId: uid, seed: challengeSeed(week), mode: 'challenge', challengeWeek: week, params: DEFAULT_PARAMS as unknown as Prisma.InputJsonValue } });
+      // Per-user advisory lock: count + create are serialised so parallel requests cannot exceed the cap.
+      const { run, today } = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`challenge:${uid}`}))`;
+        const today = await tx.run.count({ where: { userId: uid, mode: 'challenge', startedAt: { gte: new Date(`${utcDay()}T00:00:00Z`) } } });
+        if (today >= CHALLENGE_ATTEMPTS_PER_DAY) throw new HttpError(429, 'challenge_attempts_used');
+        const run = await tx.run.create({ data: { userId: uid, seed: challengeSeed(week), mode: 'challenge', challengeWeek: week, params: DEFAULT_PARAMS as unknown as Prisma.InputJsonValue } });
+        return { run, today };
+      });
       await track(prisma, uid, 'run_start', { runId: run.id, mode: 'challenge' });
       return { runId: run.id, seed: run.seed, params: DEFAULT_PARAMS, mode: 'challenge', week, attemptsLeft: CHALLENGE_ATTEMPTS_PER_DAY - today - 1 };
     }

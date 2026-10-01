@@ -71,6 +71,16 @@ describe('weekly challenge', () => {
   });
 });
 
+describe('weekly challenge concurrency', () => {
+  it('parallel starts cannot exceed the daily attempt cap', async () => {
+    const g = await guest(app);
+    const codes = await Promise.all(Array.from({ length: CHALLENGE_ATTEMPTS_PER_DAY + 3 }, () =>
+      app.inject({ method: 'POST', url: '/runs', headers: g.headers, payload: { mode: 'challenge' } }).then((r) => r.statusCode)));
+    expect(codes.filter((c) => c === 200)).toHaveLength(CHALLENGE_ATTEMPTS_PER_DAY);
+    expect(codes.filter((c) => c === 429)).toHaveLength(3);
+  });
+});
+
 describe('special events', () => {
   it('active event multiplies run rewards and is visible', async () => {
     const g = await guest(app);

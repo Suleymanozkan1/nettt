@@ -13,7 +13,8 @@ export async function startRealtime(port: number, deps = { prisma: new PrismaCli
     if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); return; }
     const metricsAllowed = deps.config.METRICS_TOKEN ? req.headers.authorization === `Bearer ${deps.config.METRICS_TOKEN}` : deps.config.NODE_ENV !== 'production';
     if (req.url === '/metrics' && metricsAllowed) { res.writeHead(200, { 'content-type': registry.contentType }); res.end(await registry.metrics()); return; }
-    // Anything else (e.g. /matchmake) is handled by Colyseus' own listener on this server.
+    // Colyseus' own listener on this server answers /matchmake; everything else gets a 404 instead of hanging.
+    if (!req.url?.startsWith('/matchmake')) { res.writeHead(404); res.end(); }
   });
   const server = new Server({ transport: new WebSocketTransport({ server: http }) });
   server.define('duel', DuelRoom);

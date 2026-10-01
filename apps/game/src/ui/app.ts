@@ -30,6 +30,8 @@ export class App {
   private event: ActiveEvent | null = null;
   private startAct = 1;
   private duel: { room: Room<DuelStateView>; finishedLocal: boolean } | null = null;
+  /** Incremented on every cancel, so a join that resolves after "Vazgeç" leaves immediately. */
+  private duelAttempt = 0;
   private menu3dModule: typeof import('../menu3d/Menu3D') | null = null;
 
   constructor(private readonly root: HTMLElement, private readonly game: Phaser.Game) {}
@@ -514,8 +516,13 @@ export class App {
   }
 
   private async connectDuel(): Promise<void> {
+    const attempt = ++this.duelAttempt;
     let room: Room<DuelStateView>;
-    try { room = await joinDuel(); } catch {
+    try {
+      room = await joinDuel();
+      if (attempt !== this.duelAttempt) { await room.leave().catch(() => undefined); return; }
+    } catch {
+      if (attempt !== this.duelAttempt) return;
       const st = this.root.querySelector('[data-testid="duel-status"]');
       if (st) st.textContent = 'Düello sunucusuna bağlanılamadı.';
       return;
@@ -528,6 +535,7 @@ export class App {
   }
 
   private async leaveDuel(): Promise<void> {
+    this.duelAttempt++;
     const d = this.duel;
     this.duel = null;
     if (d) { this.scene.stop(); await d.room.leave().catch(() => undefined); }
@@ -553,7 +561,8 @@ export class App {
       onRound: (ev) => this.onRound(ev),
       onBoss: (level) => toast(`BOSS PERDESİ ${level}!`, 'error'),
       onDead: () => {
-        if (this.duel) this.duel.finishedLocal = true;
+        if (!this.duel || this.duel.room !== room) return; // result already shown or duel left
+        this.duel.finishedLocal = true;
         this.root.replaceChildren(h('div', { class: 'panel modal' }, h('h2', {}, 'Işıkların söndü'), h('p', {}, 'Rakiplerin gösterisini bitirmesi bekleniyor…'), h('ul', { class: 'mission-mini', 'data-testid': 'opponents' })));
         this.onDuelState(room.state);
       },

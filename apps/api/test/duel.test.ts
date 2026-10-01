@@ -45,6 +45,23 @@ describe('live duel (Colyseus)', () => {
     await expect(join('not-a-token')).rejects.toThrow();
   });
 
+  it('one account cannot take two seats, even with parallel joins', async () => {
+    const a = await guest(app);
+    const results = await Promise.allSettled([join(a.token), join(a.token)]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    for (const r of results) if (r.status === 'fulfilled') await r.value.leave();
+  });
+
+  it('nobody can join once the show has started; unknown HTTP paths get 404', async () => {
+    const a = await guest(app); const b = await guest(app); const c = await guest(app);
+    const ra = await join(a.token); const rb = await join(b.token);
+    await waitFor(() => (ra.state as { phase: string }).phase === 'playing', DUEL_COUNTDOWN_MS + 3000);
+    const late = await join(c.token).then((r) => (r.roomId === ra.roomId ? 'same-room' : (void r.leave(), 'new-room')), () => 'rejected');
+    expect(late).not.toBe('same-room');
+    expect((await fetch(`http://localhost:${PORT}/nope`)).status).toBe(404);
+    await ra.leave(); await rb.leave();
+  }, 30000);
+
   it('server scores both players, ignores forged future taps, rewards the winner once', async () => {
     const a = await guest(app); const b = await guest(app);
     const ra = await join(a.token);

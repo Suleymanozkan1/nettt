@@ -41,6 +41,7 @@ export class StageScene extends Phaser.Scene {
   private audience: Phaser.GameObjects.Arc[] = [];
   private flash: Flash | null = null;
   private deadNotified = false;
+  private deadTimer: Phaser.Time.TimerEvent | null = null;
   private frameAt = 0;
 
   constructor() { super('stage'); }
@@ -127,8 +128,11 @@ export class StageScene extends Phaser.Scene {
 
   /** Stops rendering/simulating the current show (e.g. leaving a duel). */
   stop(): void {
+    this.deadTimer?.remove(false);
+    this.deadTimer = null;
     this.sim = null;
     this.onInput = null;
+    this.cb = null;
   }
 
   quit(): void {
@@ -193,7 +197,7 @@ export class StageScene extends Phaser.Scene {
     this.process(sim.advance(Math.round(this.clock)));
 
     if (sim.state === 'dead') {
-      if (!this.deadNotified) { this.deadNotified = true; this.time.delayedCall(700, () => this.cb?.onDead()); }
+      if (!this.deadNotified) { this.deadNotified = true; this.deadTimer = this.time.delayedCall(700, () => { this.deadTimer = null; this.cb?.onDead(); }); }
       this.drawLamp(0);
       this.shapeLabel.setText('');
       return;
