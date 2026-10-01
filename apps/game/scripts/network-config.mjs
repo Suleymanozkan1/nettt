@@ -3,7 +3,12 @@
 //   iOS:     NSAppTransportSecurity/NSPinnedDomains in ios/App/App/Info.plist (between generated markers)
 //   PIN_DOMAINS      comma-separated API hosts to pin (e.g. api.example.com)
 //   PIN_SHA256       comma-separated base64 SPKI SHA-256 pins (primary + backup); required with PIN_DOMAINS
-//   PIN_EXPIRES      optional pin-set expiration (YYYY-MM-DD); after it the pins are not enforced
+//   PIN_KIND         leaf (default) | ca: whether PIN_SHA256 are SPKI hashes of the server (leaf) certificate or of a
+//                    CA in its chain. Android matches any certificate in the chain; iOS needs to be told which
+//                    (NSPinnedLeafIdentities vs NSPinnedCAIdentities), so the kind must be explicit.
+//   PIN_EXPIRES      optional pin-set expiration (YYYY-MM-DD), Android only: iOS has no pin expiry, so it is rejected
+//                    when iOS pins are generated (set PIN_IOS=0 to generate Android pins only)
+//   PIN_IOS          1 (default) | 0: write the iOS ATS pins into Info.plist
 //   PIN_TEST_BAD_DOMAINS  CI only: hosts pinned to a wrong key, to prove pinning rejects them
 //   DEV_CA_PEM       CI only: path to a self-signed CA trusted for the pinned hosts
 //   CAP_DEV_CLEARTEXT=1  emulator/CI builds that talk to a local http API
@@ -26,6 +31,12 @@ if (domains.length && !pins.length) throw new Error('PIN_DOMAINS needs PIN_SHA25
 if (pins.some((p) => !/^[A-Za-z0-9+/]{43}=$/.test(p))) throw new Error('PIN_SHA256 entries must be base64 SHA-256 digests');
 if (domains.length && pins.length < 2) console.warn('network-config: add a backup pin, or a key rotation will lock users out');
 if (process.env.PIN_EXPIRES && !/^\d{4}-\d{2}-\d{2}$/.test(process.env.PIN_EXPIRES)) throw new Error('PIN_EXPIRES must be YYYY-MM-DD');
+const pinKind = process.env.PIN_KIND ?? 'leaf';
+if (!['leaf', 'ca'].includes(pinKind)) throw new Error('PIN_KIND must be leaf or ca');
+const iosPins = process.env.PIN_IOS !== '0';
+if (iosPins && process.env.PIN_EXPIRES && (domains.length || bad.length)) {
+  throw new Error('PIN_EXPIRES is Android-only (iOS pins never expire). Unset it, or set PIN_IOS=0 to skip iOS pins.');
+}
 
 const rawDir = join(root, 'raw');
 rmSync(join(rawDir, 'dev_ca.pem'), { force: true });
@@ -51,15 +62,16 @@ const plistPath = join(app, 'ios', 'App', 'App', 'Info.plist');
 if (existsSync(plistPath)) {
   const BEGIN = '\t<!-- pins:generated -->';
   const END = '\t<!-- /pins:generated -->';
-  const iosDomain = (d, values) => `\t\t\t<key>${d}</key>\n\t\t\t<dict>\n\t\t\t\t<key>NSIncludesSubdomains</key>\n\t\t\t\t<true/>\n\t\t\t\t<key>NSPinnedLeafIdentities</key>\n\t\t\t\t<array>\n${values.map((p) => `\t\t\t\t\t<dict>\n\t\t\t\t\t\t<key>SPKI-SHA256-BASE64</key>\n\t\t\t\t\t\t<string>${p}</string>\n\t\t\t\t\t</dict>\n`).join('')}\t\t\t\t</array>\n\t\t\t</dict>\n`;
+  const iosDomain = (d, values) => `\t\t\t<key>${d}</key>\n\t\t\t<dict>\n\t\t\t\t<key>NSIncludesSubdomains</key>\n\t\t\t\t<true/>\n\t\t\t\t<key>${pinKind === 'ca' ? 'NSPinnedCAIdentities' : 'NSPinnedLeafIdentities'}</key>\n\t\t\t\t<array>\n${values.map((p) => `\t\t\t\t\t<dict>\n\t\t\t\t\t\t<key>SPKI-SHA256-BASE64</key>\n\t\t\t\t\t\t<string>${p}</string>\n\t\t\t\t\t</dict>\n`).join('')}\t\t\t\t</array>\n\t\t\t</dict>\n`;
   let plist = readFileSync(plistPath, 'utf8');
   const s0 = plist.indexOf(BEGIN);
   if (s0 >= 0) plist = plist.slice(0, s0) + plist.slice(plist.indexOf(END) + END.length + 1);
-  if (domains.length || bad.length) {
+  // PIN_IOS=0 still removes earlier generated pins, so a stale pin set can never linger in the plist.
+  if (iosPins && (domains.length || bad.length)) {
     const block = `${BEGIN}\n\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSPinnedDomains</key>\n\t\t<dict>\n${domains.map((d) => iosDomain(d, pins)).join('')}${bad.map((d) => iosDomain(d, [WRONG])).join('')}\t\t</dict>\n\t</dict>\n${END}\n`;
     const at = plist.lastIndexOf('</dict>');
     plist = plist.slice(0, at) + block + plist.slice(at);
   }
   writeFileSync(plistPath, plist);
-  console.log(`network-config (iOS): ${domains.length ? `pinned ${domains.join(', ')}` : 'no pins'}`);
+  console.log(`network-config (iOS): ${iosPins && domains.length ? `pinned ${domains.join(', ')} (${pinKind})` : 'no pins'}`);
 }
