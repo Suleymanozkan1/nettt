@@ -1,0 +1,49 @@
+{
+  "name": "golge-kuklaci",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @stage/api dev",
+    "dev:game": "pnpm --filter @stage/game dev",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "e2e": "playwright test",
+    "e2e:offline": "playwright test -c playwright.offline.config.ts",
+    "db:migrate": "pnpm --filter @stage/api db:migrate"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@playwright/test": "1.56.1",
+    "eslint": "^9.39.0",
+    "globals": "^16.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild"
+    ],
+    "overrides": {
+      "nanoid@>=3 <3.3.18": "^3.3.18",
+      "deepmerge-ts@<8": "^8.0.2"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-mwcw-c2x4-8c55",
+        "GHSA-xwg4-73v4-xw9w",
+        "GHSA-28wg-ghj8-5hjv",
+        "GHSA-2v37-7h3g-55p8"
+      ]
+    }
+  }
+}
