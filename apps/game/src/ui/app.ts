@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CATALOG, DEFAULT_PARAMS, MAX_REVIVES, ROUNDS_PER_LEVEL, BOSS_EVERY, startLives, type RunInput, type RunSummary, type SimEvent } from '@stage/shared';
+import { CATALOG, DEFAULT_CHARACTER, DEFAULT_PARAMS, DEFAULT_SKIN, MAX_REVIVES, ROUNDS_PER_LEVEL, BOSS_EVERY, startLives, type RunInput, type RunSummary, type SimEvent } from '@stage/shared';
 import { api, ApiError, type FinishResult, type Profile } from '../lib/api';
 import { setSoundEnabled, sfx } from '../lib/audio';
 import { setHapticsEnabled } from '../lib/haptics';
@@ -152,8 +152,8 @@ export class App {
         else { toast('Gösteri başlatılamadı, tekrar dene.', 'error'); return; }
       }
     }
-    const lamp = CATALOG.find((c) => c.id === this.profile?.skin) ?? CATALOG[0]!;
-    const puppet = CATALOG.find((c) => c.id === this.profile?.character);
+    const lamp = CATALOG.find((c) => c.id === (this.profile?.skin ?? DEFAULT_SKIN)) ?? CATALOG.find((c) => c.id === DEFAULT_SKIN)!;
+    const puppet = CATALOG.find((c) => c.id === (this.profile?.character ?? DEFAULT_CHARACTER));
     this.run = { runId, offline, score: 0, combo: 0, level: 1, lives: startLives(params) };
     this.scene.startRun(seed, params, lamp.colors[0]!, puppet?.colors[0] ?? 0xff8c42, {
       onRound: (ev) => this.onRound(ev),
