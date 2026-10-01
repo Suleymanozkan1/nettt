@@ -13,5 +13,6 @@ ENV VITE_API_URL=$VITE_API_URL VITE_REALTIME_URL=$VITE_REALTIME_URL
 RUN pnpm --filter @stage/game exec vite build
 
 FROM nginx:1.27-alpine
+COPY apps/game/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/game/dist /usr/share/nginx/html
 EXPOSE 80

@@ -14,6 +14,13 @@
 
 {$GAME_DOMAIN:game.localhost} {
 	import common
+	header {
+		X-Frame-Options DENY
+		Content-Security-Policy "frame-ancestors 'none'"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy same-origin
+		Cross-Origin-Embedder-Policy require-corp
+	}
 	reverse_proxy game:80
 }
 
