@@ -121,6 +121,35 @@ describe('local (offline) backend', () => {
     expect(Math.max(...kept.map((h) => h.score))).toBe(1059);
   });
 
+  it('a rejected run leaves the saved and in-memory state untouched', async () => {
+    const store = memoryStore();
+    const api = createLocalApi(store, () => DAY);
+    const run = await api.startRun({});
+    const before = store.data.get('stage.local.v1');
+    // A revive the player cannot pay for (0 gems) must not consume the run or change anything.
+    const inputs = play(run.seed, run.params, 3);
+    const sim = new RunSim(run.seed, run.params);
+    for (const i of inputs) sim.tap(i.t);
+    sim.advance(10_000_000);
+    const revive = { t: sim.deathT + 200, k: 'revive' as const };
+    await expect(api.finishRun(run.runId, [...inputs, revive])).rejects.toMatchObject({ code: 'insufficient_funds' });
+    expect(store.data.get('stage.local.v1')).toBe(before);
+    expect((await api.me()).totalRuns).toBe(0);
+    // The pending run is still there: finishing it properly now works.
+    const ok = await api.finishRun(run.runId, inputs);
+    expect(ok.verified).toBe(true);
+  });
+
+  it('older saves with missing nested fields load with defaults (caps keep working)', async () => {
+    const store = memoryStore();
+    store.data.set('stage.local.v1', JSON.stringify({ v: 1, id: 'local-x', credits: 7, day: { key: '2026-10-01', shows: 1 }, settings: { sound: false } }));
+    const api = createLocalApi(store, () => DAY);
+    expect((await api.me()).credits).toBe(7);
+    expect((await api.me()).settings).toMatchObject({ sound: false, haptics: true });
+    for (let i = 0; i < 5; i++) await api.startRun({ mode: 'challenge' });
+    await expect(api.startRun({ mode: 'challenge' })).rejects.toMatchObject({ code: 'challenge_attempts_used' });
+  });
+
   it('online-only features fail clearly', async () => {
     const api = createLocalApi(memoryStore(), () => DAY);
     await expect(api.login('a@b.co', 'x')).rejects.toMatchObject({ code: 'online_only' });

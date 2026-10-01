@@ -23,9 +23,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   } catch {
     throw new ApiError(0, 'offline');
   }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error ?? 'error', data.reason ?? data.message);
-  return data as T;
+  const parsed: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // Error bodies may be anything (even `null`); never let that turn into a TypeError instead of an ApiError.
+    const data = (parsed && typeof parsed === 'object' ? parsed : {}) as { error?: string; reason?: string; message?: string };
+    throw new ApiError(res.status, data.error ?? 'error', data.reason ?? data.message);
+  }
+  return parsed as T;
 }
 
 function randomDeviceId(): string {

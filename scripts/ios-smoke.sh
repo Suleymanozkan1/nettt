@@ -33,7 +33,10 @@ if [ -n "${TLS_CERT:-}" ]; then
   { grep -h "PIN_SELFTEST" "$OUT_ABS"/app-std*.txt || true; grep "golge" "$TLS_PROXY_LOG" || true; } | tee "$OUT_ABS/pinning.txt"
   grep -q "__pin_selftest.*golge-pin.test -> ok " "$OUT_ABS/pinning.txt" || { echo "FAIL: pinned host not reachable"; exit 1; }
   grep -q "__pin_selftest.*golge-badpin.test -> error" "$OUT_ABS/pinning.txt" || { echo "FAIL: wrong-pin host was not refused"; exit 1; }
-  if grep -q "^[A-Z]* golge-badpin.test" "$OUT_ABS/pinning.txt"; then echo "FAIL: a request reached the wrong-pin host"; exit 1; fi
+  # Proof it was the pin and not a connection problem: the app reached the wrong-pin host and began TLS (SNI),
+  # with the same trusted certificate as the pinned host, yet no HTTP request was ever sent there.
+  grep -q "^SNI golge-badpin.test" "$OUT_ABS/pinning.txt" || { echo "FAIL: the wrong-pin host was never contacted (no TLS handshake)"; exit 1; }
+  if grep -qE "^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) golge-badpin.test" "$OUT_ABS/pinning.txt"; then echo "FAIL: a request reached the wrong-pin host"; exit 1; fi
   echo "iOS certificate pinning: PASS"
 fi
 echo "IOS SMOKE PASS"

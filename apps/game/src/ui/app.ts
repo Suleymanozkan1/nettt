@@ -309,6 +309,7 @@ export class App {
     const run = this.run;
     const sim = this.scene.sim;
     if (!run || !sim) return;
+    this.run = null; // a second click while verifying must not submit the same run again
     const inputs: RunInput[] = [...this.scene.inputs];
     this.root.replaceChildren(h('div', { class: 'panel modal' }, h('p', {}, 'Gösteri doğrulanıyor…')));
     let result: FinishResult | null = null;
@@ -321,7 +322,6 @@ export class App {
         error = e instanceof ApiError && e.code === 'offline' ? 'Bağlantı koptu — bu gösteri kaydedilemedi.' : `Gösteri sayılmadı (${e instanceof ApiError ? e.message : 'hata'}).`;
       }
     }
-    this.run = null;
     this.renderResults(sim.summary(), result, error, run.offline, run);
   }
 
