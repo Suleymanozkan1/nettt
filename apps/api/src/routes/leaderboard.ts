@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { LeaderboardQuery, isoWeekKey } from '@stage/shared';
 import { parse } from '../errors';
 import { userId } from '../app';
@@ -35,16 +36,31 @@ export async function leaderboardRoutes(app: FastifyInstance): Promise<void> {
     const where = period === 'challenge'
       ? { status: 'FINISHED' as const, mode: 'challenge', challengeWeek: isoWeekKey(), user: { flagged: false } }
       : { status: 'FINISHED' as const, mode: 'normal', finishedAt: { gte: since }, user: { flagged: false } };
-    const rows = await prisma.run.groupBy({
+    // Top N only (bounded), then my rank from a separate aggregate instead of loading every player.
+    const top = await prisma.run.groupBy({
       by: ['userId'],
       where,
       _max: { score: true },
+      having: { score: { _max: { gt: 0 } } },
       orderBy: { _max: { score: 'desc' } },
+      take: TOP_N,
     });
-    const ranked = rows.filter((r) => (r._max.score ?? 0) > 0);
-    const top = ranked.slice(0, TOP_N);
     const users = await prisma.user.findMany({ where: { id: { in: top.map((r) => r.userId) } }, select: { id: true, displayName: true, character: true } });
-    const myIdx = ranked.findIndex((r) => r.userId === me);
+    const mine = await prisma.run.aggregate({ where: { ...where, userId: me }, _max: { score: true } });
+    const myScore = mine._max.score ?? 0;
+    let myRank: number | null = null;
+    if (myScore > 0) {
+      const scope = period === 'challenge'
+        ? Prisma.sql`r.mode = 'challenge' AND r."challengeWeek" = ${isoWeekKey()}`
+        : Prisma.sql`r.mode = 'normal' AND r."finishedAt" >= ${since}`;
+      const rows = await prisma.$queryRaw<{ ahead: bigint }[]>`
+        SELECT count(*) AS ahead FROM (
+          SELECT r."userId" FROM "Run" r JOIN "User" u ON u.id = r."userId"
+          WHERE r.status = 'FINISHED' AND u.flagged = false AND ${scope}
+          GROUP BY r."userId" HAVING max(r.score) > ${myScore}
+        ) t`;
+      myRank = Number(rows[0]?.ahead ?? 0) + 1;
+    }
     return {
       period,
       since: since.toISOString(),
@@ -52,8 +68,8 @@ export async function leaderboardRoutes(app: FastifyInstance): Promise<void> {
         const u = users.find((x) => x.id === r.userId);
         return { rank: i + 1, name: u?.displayName ?? '?', score: r._max.score ?? 0, character: u?.character ?? 'char_fox', me: r.userId === me };
       }),
-      myRank: myIdx >= 0 ? myIdx + 1 : null,
-      myScore: myIdx >= 0 ? ranked[myIdx]!._max.score : 0,
+      myRank,
+      myScore,
     };
   });
 }

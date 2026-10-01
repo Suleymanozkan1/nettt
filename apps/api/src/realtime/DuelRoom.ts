@@ -196,6 +196,8 @@ export class DuelRoom extends Room<DuelState> {
       const { prisma, config } = DuelRoom.deps;
       const paused = await rewardsPaused(prisma, config.DAILY_CREDIT_LIABILITY_LIMIT);
       await prisma.$transaction(async (tx) => {
+        // Serialise a winner's finishes so the daily rewarded-wins cap cannot be raced by parallel rooms.
+        if (winner) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`duel-win:${winner.userId}`}))`;
         const match = await tx.duelMatch.create({ data: { roomId: this.roomId, winnerId: winner?.userId ?? null, players: ranking.map(({ userId, name, score, fits }) => ({ userId, name, score, fits })) as Prisma.InputJsonValue } });
         if (winner && !paused) {
           const since = new Date(Date.now() - 86_400_000);

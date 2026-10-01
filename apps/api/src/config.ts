@@ -23,6 +23,8 @@ const Env = z.object({
   FCM_ENDPOINT: z.string().url().default('https://fcm.googleapis.com'),
   /** UTC hour at which the opt-in daily reminder push goes out (16 = 19:00 in Türkiye). */
   PUSH_REMINDER_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(16),
+  /** Secret mixed into guest device-id hashes. Keep it stable: rotating it orphans guest accounts. Falls back to JWT_SECRET. */
+  DEVICE_ID_PEPPER: z.string().min(32).optional(),
   NODE_ENV: z.string().default('development'),
 });
 

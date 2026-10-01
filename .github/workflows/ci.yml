@@ -58,7 +58,7 @@ jobs:
           mkdir -p test-results/zap && chmod 777 test-results/zap
           for target in http://localhost:3000/health http://localhost:4173/; do
             name=$(echo "$target" | tr -c 'a-z0-9' '_')
-            docker run --rm --network host -v "$PWD/test-results/zap:/zap/wrk:rw" mirror.gcr.io/zaproxy/zaproxy:stable \
+            docker run --rm --network host -v "$PWD/test-results/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
               zap-baseline.py -t "$target" -r "$name.html" -w "$name.md" -I
           done
           grep -h "FAIL-NEW\|WARN-NEW" test-results/zap/*.md | head -40 || true
