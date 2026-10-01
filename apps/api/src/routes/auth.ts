@@ -18,7 +18,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const { deviceId, powId, powNonce } = parse(GuestAuthBody, req.body);
     const salt = await pow.consume(powId);
     if (!salt || !checkPow(salt, powNonce, config.POW_BITS)) throw new HttpError(403, 'pow_invalid');
-    const deviceIdHash = hashDeviceId(deviceId, config.JWT_SECRET);
+    const deviceIdHash = hashDeviceId(deviceId, config.DEVICE_ID_PEPPER ?? config.JWT_SECRET);
     let user = await prisma.user.findUnique({ where: { deviceIdHash } });
     if (!user) {
       // Multi-account farming guard: cap new guest accounts per IP per day.
@@ -40,9 +40,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       await app.authenticate(req);
       guestId = req.user.sub;
     }
-    const user = guestId
-      ? await prisma.user.update({ where: { id: guestId }, data: { email, passwordHash, ...(body.displayName ? { displayName: body.displayName } : {}) } })
-      : await prisma.user.create({ data: { email, passwordHash, displayName: body.displayName ?? email.split('@')[0]!.slice(0, 20), createdIp: req.ip } });
+    let user;
+    if (guestId) {
+      // Only a guest can be upgraded: an account that already has credentials is never re-keyed by a bearer token.
+      const upgraded = await prisma.user.updateMany({ where: { id: guestId, email: null }, data: { email, passwordHash, ...(body.displayName ? { displayName: body.displayName } : {}) } });
+      if (upgraded.count !== 1) throw new HttpError(409, 'already_registered');
+      user = await prisma.user.findUniqueOrThrow({ where: { id: guestId } });
+    } else {
+      user = await prisma.user.create({ data: { email, passwordHash, displayName: body.displayName ?? email.split('@')[0]!.slice(0, 20), createdIp: req.ip } });
+    }
     await track(prisma, user.id, 'signup', { method: 'email', upgradedGuest: !!guestId });
     return { token: app.jwt.sign({ sub: user.id, tv: user.tokenVersion }) };
   });

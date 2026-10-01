@@ -8,6 +8,8 @@ export interface ServiceAccount { project_id: string; client_email: string; priv
 export type SendResult = 'ok' | 'invalid_token' | 'error';
 
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
+const FETCH_TIMEOUT_MS = 10_000;
+const BATCH = 500;
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
 
 /**
@@ -34,6 +36,7 @@ export class FcmSender {
     const signature = createSign('RSA-SHA256').update(unsigned).sign(this.sa.private_key);
     const res = await fetch(aud, {
       method: 'POST',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${b64url(signature)}` }),
     });
@@ -47,6 +50,7 @@ export class FcmSender {
     try {
       const res = await fetch(`${this.endpoint}/v1/projects/${this.sa.project_id}/messages:send`, {
         method: 'POST',
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         headers: { 'content-type': 'application/json', authorization: `Bearer ${await this.accessToken()}` },
         body: JSON.stringify({ message: { token, notification: { title, body }, android: { priority: 'high' } } }),
       });
@@ -67,10 +71,31 @@ export class FcmSender {
  * push per day per device. Dead tokens are removed. Returns the number of pushes delivered.
  */
 export async function runDailyReminders(prisma: PrismaClient, sender: FcmSender, day = utcDay()): Promise<number> {
-  const tokens = await prisma.pushToken.findMany({
-    where: { OR: [{ lastSentDay: null }, { lastSentDay: { not: day } }] },
-    include: { user: { select: { settings: true, daily: { select: { lastClaimDay: true } } } } },
-  });
+  let sent = 0;
+  let cursor: string | undefined;
+  for (;;) {
+    // Only opted-in players who have not claimed today, read in id-ordered batches.
+    const tokens = await prisma.pushToken.findMany({
+      where: {
+        OR: [{ lastSentDay: null }, { lastSentDay: { not: day } }],
+        user: { settings: { path: ['notifications'], equals: true }, OR: [{ daily: null }, { daily: { lastClaimDay: { not: day } } }] },
+      },
+      include: { user: { select: { settings: true, daily: { select: { lastClaimDay: true } } } } },
+      orderBy: { id: 'asc' },
+      take: BATCH,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    if (tokens.length === 0) break;
+    cursor = tokens[tokens.length - 1]!.id;
+    sent += await sendBatch(prisma, sender, tokens, day);
+    if (tokens.length < BATCH) break;
+  }
+  return sent;
+}
+
+type ReminderToken = { id: string; token: string; lastSentDay: string | null; user: { settings: unknown; daily: { lastClaimDay: string | null } | null } };
+
+async function sendBatch(prisma: PrismaClient, sender: FcmSender, tokens: ReminderToken[], day: string): Promise<number> {
   let sent = 0;
   for (const t of tokens) {
     const settings = { ...DEFAULT_SETTINGS, ...(t.user.settings as Partial<Settings>) };
