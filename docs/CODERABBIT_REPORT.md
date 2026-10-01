@@ -11,7 +11,7 @@ CodeRabbit itself could not be run in this environment:
 | CodeRabbit CLI | Not installed (`which coderabbit` → not found) |
 | CodeRabbit GitHub App | No pull request exists (none was requested), so the App had nothing to review |
 
-Instead, the independent `code-review` tool of this Claude Code session was run three times over the committed diffs. **These are not CodeRabbit results.**
+Instead, the independent `code-review` tool of this Claude Code session was run over the committed diffs: three times in round 1 and four times in round 2. **These are not CodeRabbit results.**
 
 ## Pass 1: `HEAD~1..HEAD` of the game commit (high effort)
 
@@ -34,15 +34,44 @@ Instead, the independent `code-review` tool of this Claude Code session was run 
 
 **No bugs found.** Design note recorded in the final report: each admin "resume" restarts the counting window, so up to about 2× the limit can be granted within a rolling 24h.
 
+## Round 2 (duel, challenge, events, admin, mobile, 3D menu)
+
+### Pass 4: `a410172..HEAD` (high effort)
+
+| # | File | Finding | Fix | Regression test |
+|---|---|---|---|---|
+| 8 | apps/api/src/realtime/DuelRoom.ts | A seat reserved just before the countdown ended could join after `start()` with no simulation, crashing `tick()` | Reject auth/join once playing; null-safe seats | late join rejected |
+| 9 | apps/game/src/ui/app.ts | The delayed death callback could overwrite the duel result screen | `stop()` cancels the timer; handler ignores finished duels | — (UI) |
+| 10 | apps/game/src/ui/app.ts | "Vazgeç" during a pending join left the player in the room | Attempt counter; a late-resolving join leaves | — (UI) |
+| 11 | apps/api/src/realtime/DuelRoom.ts | Parallel joins of one account could take two seats (self-farming) | Synchronous pending guard before any await | parallel join test |
+| 12 | apps/api/src/realtime-server.ts | Unknown HTTP paths hung | 404 for non-matchmake paths | `/nope` → 404 |
+| 13 | apps/api/src/routes/runs.ts | Parallel challenge starts could exceed 5/day | `pg_advisory_xact_lock` per user | 8 parallel → exactly 5 OK |
+
+### Pass 5: fix commit (medium effort)
+
+| # | Finding | Fix |
+|---|---|---|
+| 14 | The pending guard leaked when the socket closed during the auth DB lookup | session→user map, cleared in `onLeave` |
+
+### Pass 6: low effort
+
+| # | Finding | Fix |
+|---|---|---|
+| 15 | Pass 5's fix never ran: Colyseus 0.16 skips `onLeave` in that path | Check `ClientState.LEAVING` at the end of `onAuth` and release there |
+
+### Pass 7: low effort
+
+**No bugs found.**
+
 ## Re-run after changes
 
 | Step | Result |
 |---|---|
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
-| `pnpm test` | PASS (21 shared + 6 game + 20 API = 47) |
-| `pnpm build` | PASS |
-| `pnpm e2e` (Playwright) | PASS 4/4 (mobile touch + desktop mouse) |
+| `pnpm test` | PASS (25 shared + 6 game + 33 API = 64) |
+| `pnpm build` | PASS (game + admin pages, 3D chunk) |
+| `pnpm e2e` (Playwright) | PASS 12, 2 desktop-only skips (incl. two-browser duel, admin panel) |
 
 ## How to get a real CodeRabbit review
 
