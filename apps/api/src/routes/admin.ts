@@ -115,7 +115,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post<{ Params: { id: string } }>('/admin/users/:id/unflag', admin, async (req) => {
-    await prisma.user.update({ where: { id: req.params.id }, data: { flagged: false } });
+    const r = await prisma.user.updateMany({ where: { id: req.params.id }, data: { flagged: false } });
+    if (r.count !== 1) throw new HttpError(404, 'user_not_found');
     return { ok: true };
   });
 
