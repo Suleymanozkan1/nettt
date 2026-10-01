@@ -16,7 +16,20 @@ Setup: production build (`vite preview`), 412×915 phone viewport (DPR 2.6, touc
 
 **Caveat:** headless Chromium renders WebGL with SwiftShader (on the CPU) and caps here at ~30 fps even unthrottled. These are pessimistic **relative** numbers, not real-device FPS.
 
-On-device frame statistics come from the CI Android emulator job (`dumpsys gfxinfo`, artifact `android-emulator/gfxinfo.txt`).
+## Android emulator (CI run 36869055975)
+
+The emulator is an x86_64 Android 14 image (API 34) on a GitHub runner, with **software GPU rendering**. Like the headless probe, these numbers are pessimistic; a physical phone has not been measured.
+
+| Metric | Online build (pinned HTTPS API) | Offline edition |
+|---|---|---|
+| Cold start (`am start -W`, TotalTime) | 4.6 s | 2.6 s |
+| Frame time during a show: p50 / p90 / p95 / p99 | 40 / 105 / 150 / 300 ms | 32 / 61 / 113 / 250 ms |
+| Janky frames | 48% | 35% |
+| Memory (PSS after the show) | 92 MB | not measured |
+
+Source: `scripts/android-smoke.sh`, artifact `android-emulator` (`startup.txt`, `gfxinfo-show.txt`, `meminfo.txt`). The online cold start includes the sign-in proof-of-work and the API round trips.
+
+**Reading:** with no GPU, the WebGL stage runs at about 25 fps on the emulator. The game logic is time-based, so scores do not depend on the frame rate (the server replays the timestamps), but the animation is visibly less smooth there. Real devices have to be measured before release.
 
 ## Bundle
 

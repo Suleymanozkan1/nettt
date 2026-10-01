@@ -1,16 +1,25 @@
 # Final Implementation Report
 
-Audit date: 2026-10-01 (round 3) · Branch `claude/relaxed-hypatia-vx3zna` · Repository `suleymanozkan1/nettt` · Game: **Gölge Kuklacı** (Shadow Puppeteer)
+Audit date: 2026-10-01 (round 4) · Branch `claude/relaxed-hypatia-vx3zna` · Repository `suleymanozkan1/nettt` · Game: **Gölge Kuklacı** (Shadow Puppeteer)
 
 **Verdict: NOT "PROJECT COMPLETE".** A playable, server-verified vertical slice exists and runs; many requested systems are partial or not implemented (see §25).
 
 ## 1. Executive Summary
 
-Round 3 closes most of the remaining gaps.
+**Round 4 (latest):**
+- **Offline edition APK:** the game is fully playable on a phone with no server. Progress, rewards, shop, missions, the weekly challenge and personal records are stored on the device, using the same shared rules (rewards come from replaying the recorded inputs).
+- **On-device notifications:** a test reminder was posted on the Android emulator.
+- **Safe areas:** edge-to-edge layout with system-bar, cutout and keyboard insets; a 24 px top inset was applied on the emulator.
+- **Android certificate pinning:** the pinned host works and a wrong-pin host is refused with `Pin verification failed`, verified on the emulator.
+- **Server push:** infrastructure is done (FCM v1 sender, token table, opt-in daily reminder push) and tested against a mock FCM; real delivery waits for Firebase keys.
+- **Emulator performance:** measured (docs/PERFORMANCE.md).
+- **CI:** all 4 jobs green (run 36869055975).
+
+**Round 3:** closed most of the remaining gaps.
 
 **Device and platform verification (GitHub Actions):**
 - **iOS:** an iOS simulator build ran on macOS: `xcodebuild` for the simulator, installed and launched, process running. This removes the "iOS build BLOCKED" status.
-- **Android emulator (API 34, KVM):** the app was installed and launched, created a guest account through the API, completed onboarding, played a show with OS-level touches (adb `input tap`) and received a server-verified result (CI run 36858957891), survived background/foreground and a forced rotation, no plaintext JWT in shared_prefs, deep link opened the app, no crash in logcat.
+- **Android emulator (API 34, KVM):** the app was installed and launched, created a guest account through the API (proves WebView → API on a device), survived background/foreground and a forced rotation, no plaintext JWT in shared_prefs, deep link opened the app, no crash in logcat.
 - **CI:** all GitHub Actions runs on the branch are green.
 
 **New features:**
@@ -39,18 +48,18 @@ Round 3 closes most of the remaining gaps.
 
 ## 2. Total Requirements
 
-**200** requirements, each with a unique ID in `docs/REQUIREMENTS_CHECKLIST.md`.
+**204** requirements, each with a unique ID in `docs/REQUIREMENTS_CHECKLIST.md`.
 
 ## 3. Implementation Statistics
 
 | Metric | Value |
 |---|---|
-| Total Requirements | 200 |
-| Implemented | 188 |
-| Partial | 7 |
+| Total Requirements | 204 |
+| Implemented | 194 |
+| Partial | 5 |
 | Not Implemented | 4 |
 | Blocked | 1 |
-| Completion Percentage | 188 / 200 × 100 = **94.00%** |
+| Completion Percentage | 194 / 204 × 100 = **95.10%** |
 
 Counts are produced by a script from the checklist rows; nothing is estimated.
 
@@ -59,42 +68,42 @@ Counts are produced by a script from the checklist rows; nothing is estimated.
 | ID | Requirement | Status | Implementation | Integration | Test | Runtime | Evidence | Notes |
 |---|---|---|---|---|---|---|---|---|
 | REQ-CAT-01 | Project structure | **IMPLEMENTED** | package.json, pnpm-workspace.yaml, packages/shared, apps/api, apps/game | workspace:* deps | pnpm -r test | pnpm build PASS | Workspace builds/tests all 3 packages | — |
-| REQ-CAT-02 | Web | **IMPLEMENTED** | apps/game/src/main.ts, apps/game/index.html | Vite build → nginx image | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | vite build OK; compose game:200 | — |
+| REQ-CAT-02 | Web | **IMPLEMENTED** | apps/game/src/main.ts, apps/game/index.html | Vite build → nginx image | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | vite build OK; compose game:200 | — |
 | REQ-CAT-03 | Mobile | **IMPLEMENTED** | apps/game (responsive web) + Capacitor Android/iOS | integrated | e2e mobile-touch, CI emulator + iOS simulator | CI Android emulator (API 34): PASS; iOS simulator launch PASS | — | No physical-device test |
 | REQ-CAT-04 | Android | **IMPLEMENTED** | apps/game/android | integrated | assembleDebug (local + CI), emulator smoke | CI Android emulator (API 34): PASS | guest account created via API from the device | — |
 | REQ-CAT-05 | iOS | **IMPLEMENTED** | apps/game/ios (Xcode project, URL scheme, portrait) | integrated | CI macOS: xcodebuild iphonesimulator + simctl launch | IOS SMOKE PASS (process com.golgekuklaci.game running) | GitHub Actions run (branch claude/relaxed-hypatia-vx3zna) | No physical iPhone / App Store build (needs signing) |
 | REQ-CAT-06 | Capacitor | **IMPLEMENTED** | Capacitor 7: app, haptics, local-notifications, secure-storage, ios/android | integrated | CI emulator + simulator | CI Android emulator (API 34): PASS | — | — |
 | REQ-CAT-07 | Three.js | **IMPLEMENTED** | apps/game/src/menu3d/Menu3D.tsx (three + R3F + drei) | integrated | manual headless render | Canvas rendered, 0 page errors, screenshot test-results/menu3d-mobile.png | Lazy chunk 1.15 MB (319 KB gzip) | Decorative; skipped with reduced motion / no WebGL2 |
-| REQ-CAT-08 | WebGL / WebGPU | **IMPLEMENTED** | Phaser.AUTO renderer in main.ts | Phaser WebGL renderer | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres (WebGL via SwiftShader) | Screenshots test-results/play-*.png | WebGPU not used |
-| REQ-CAT-09 | Phaser | **IMPLEMENTED** | apps/game/src/game/StageScene.ts, main.ts | phaser@3.90.0 dependency, separate chunk | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | dist/assets/phaser-*.js 1.2 MB | — |
+| REQ-CAT-08 | WebGL / WebGPU | **IMPLEMENTED** | Phaser.AUTO renderer in main.ts | Phaser WebGL renderer | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres (WebGL via SwiftShader) | Screenshots test-results/play-*.png | WebGPU not used |
+| REQ-CAT-09 | Phaser | **IMPLEMENTED** | apps/game/src/game/StageScene.ts, main.ts | phaser@3.90.0 dependency, separate chunk | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | dist/assets/phaser-*.js 1.2 MB | — |
 | REQ-CAT-10 | Colyseus | **IMPLEMENTED** | apps/api/src/realtime/DuelRoom.ts, realtime-server.ts (@colyseus/core 0.16) | integrated | test/duel.test.ts (4) + e2e duel | Two real browsers duel; docker realtime smoke | Server-side RunSim per player | — |
 | REQ-CAT-11 | Multiplayer | **IMPLEMENTED** | Live 2–4 player duel | integrated | duel.test.ts, e2e | PASS (2 browser contexts) | DuelMatch rows persisted | Async leaderboards + live duel |
-| REQ-CAT-12 | Networking | **IMPLEMENTED** | apps/game/src/lib/api.ts, apps/api/src/app.ts | fetch + JWT bearer | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Offline fallback → practice mode | — |
-| REQ-CAT-13 | Server authority | **IMPLEMENTED** | packages/shared/src/sim.ts replayRun, apps/api/src/routes/runs.ts | finish replays inputs | sim.test.ts, api.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres: final score == server replay | Client score never sent; zod strict schema | — |
+| REQ-CAT-12 | Networking | **IMPLEMENTED** | apps/game/src/lib/api.ts, apps/api/src/app.ts | fetch + JWT bearer | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Offline fallback → practice mode | — |
+| REQ-CAT-13 | Server authority | **IMPLEMENTED** | packages/shared/src/sim.ts replayRun, apps/api/src/routes/runs.ts | finish replays inputs | sim.test.ts, api.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres: final score == server replay | Client score never sent; zod strict schema | — |
 | REQ-CAT-14 | Database | **IMPLEMENTED** | apps/api/prisma/schema.prisma (9 models) | Prisma client in all routes | api.test.ts (real Postgres) | migrate deploy on dev, ci and docker DBs | Docker logs: Applying migration 20261001060000_init | — |
 | REQ-CAT-15 | Prisma | **IMPLEMENTED** | schema.prisma, migrations/20261001060000_init | @prisma/client 6.19.3 | api.test.ts | PASS | prisma migrate deploy OK | — |
 | REQ-CAT-16 | Redis | **IMPLEMENTED** | apps/api/src/server.ts (ioredis) → @fastify/rate-limit store | REDIS_URL env; compose redis service | api tests use in-memory store | redis-cli shows key stage-rl:127.0.0.1 | Scope: rate limiting only | Not used for leaderboard cache/sessions |
 | REQ-CAT-17 | Authentication | **IMPLEMENTED** | apps/api/src/routes/auth.ts, password.ts; tokenVersion revocation | integrated | api.test.ts, modes.test.ts (logout-all) | e2e guest boot | — | No refresh tokens |
 | REQ-CAT-18 | Wallet authentication | **NOT_IMPLEMENTED** | none | none | NOT_TESTED | NOT_TESTED | No wallet code/deps | Removed from scope by user: 'no crypto, no wallet' |
-| REQ-CAT-19 | User system | **IMPLEMENTED** | apps/api/src/routes/profile.ts, model User | /me, /me/settings | api.test.ts, e2e settings persist | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Settings survive reload | — |
-| REQ-CAT-20 | Fans | **IMPLEMENTED** | packages/shared/src/economy.ts computeRunRewards, playerLevelForFans | User.fans updated on finish | economy.test.ts, api.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres (+fans shown) | Results screen '+N hayran' | — |
-| REQ-CAT-21 | Ketchapp-style core loop | **IMPLEMENTED** | packages/shared/src/sim.ts, apps/game/src/game/StageScene.ts | Tap/click/Space | sim.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Run → results → 'Tekrar oyna' resets | — |
-| REQ-CAT-22 | Voodoo-style casual UX | **IMPLEMENTED** | apps/game/src/ui/app.ts, styles.css | DOM overlay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Screenshots | Subjective quality not user-tested |
-| REQ-CAT-23 | Original gameplay | **IMPLEMENTED** | Gölge Kuklacı: pendulum lamp + shadow-fit (sim.ts, rules.ts) | Shared by client/server | sim.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Concept chosen by user | Originality is a judgement, not verifiable by test |
-| REQ-CAT-24 | Tutorial | **IMPLEMENTED** | apps/game/src/ui/app.ts showTutorial | tutorialDone saved server-side | e2e tutorial visible→removed | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-CAT-19 | User system | **IMPLEMENTED** | apps/api/src/routes/profile.ts, model User | /me, /me/settings | api.test.ts, e2e settings persist | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Settings survive reload | — |
+| REQ-CAT-20 | Fans | **IMPLEMENTED** | packages/shared/src/economy.ts computeRunRewards, playerLevelForFans | User.fans updated on finish | economy.test.ts, api.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres (+fans shown) | Results screen '+N hayran' | — |
+| REQ-CAT-21 | Ketchapp-style core loop | **IMPLEMENTED** | packages/shared/src/sim.ts, apps/game/src/game/StageScene.ts | Tap/click/Space | sim.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Run → results → 'Tekrar oyna' resets | — |
+| REQ-CAT-22 | Voodoo-style casual UX | **IMPLEMENTED** | apps/game/src/ui/app.ts, styles.css | DOM overlay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Screenshots | Subjective quality not user-tested |
+| REQ-CAT-23 | Original gameplay | **IMPLEMENTED** | Gölge Kuklacı: pendulum lamp + shadow-fit (sim.ts, rules.ts) | Shared by client/server | sim.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Concept chosen by user | Originality is a judgement, not verifiable by test |
+| REQ-CAT-24 | Tutorial | **IMPLEMENTED** | apps/game/src/ui/app.ts showTutorial | tutorialDone saved server-side | e2e tutorial visible→removed | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-CAT-25 | Onboarding | **IMPLEMENTED** | apps/game/src/ui/app.ts onboarding(); POST /me/onboarding | integrated | modes.test.ts, e2e enter() | PASS | Name screen on first launch | — |
-| REQ-CAT-26 | Touch controls | **IMPLEMENTED** | StageScene pointerdown | Phaser input | e2e mobile-touch (page.touchscreen.tap) | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | debug taps ≥ 1 asserted | — |
+| REQ-CAT-26 | Touch controls | **IMPLEMENTED** | StageScene pointerdown | Phaser input | e2e mobile-touch (page.touchscreen.tap) | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | debug taps ≥ 1 asserted | — |
 | REQ-CAT-27 | Haptic feedback | **IMPLEMENTED** | apps/game/src/lib/haptics.ts (Capacitor Haptics / navigator.vibrate) | integrated | e2e vibrate spy ≥3 calls + emulator vibrator service | PASS (web); device: see vibrator.txt | — | Physical vibration not observable |
 | REQ-CAT-28 | Sound effects | **IMPLEMENTED** | apps/game/src/lib/audio.ts (WebAudio) | integrated | e2e oscillator spy ≥3 sounds | PASS | — | Audible output not observable headless |
-| REQ-CAT-29 | Progression | **IMPLEMENTED** | economy.ts playerLevelForFans; /me level fields | Home progress bar | economy.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-CAT-30 | Daily rewards | **IMPLEMENTED** | packages/shared/src/daily.ts, apps/api/src/routes/economy.ts | /daily, /daily/claim | economy.test.ts, api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres (credits=50 after claim) | Concurrent double claim → 409,409 | — |
+| REQ-CAT-29 | Progression | **IMPLEMENTED** | economy.ts playerLevelForFans; /me level fields | Home progress bar | economy.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-CAT-30 | Daily rewards | **IMPLEMENTED** | packages/shared/src/daily.ts, apps/api/src/routes/economy.ts | /daily, /daily/claim | economy.test.ts, api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres (credits=50 after claim) | Concurrent double claim → 409,409 | — |
 | REQ-CAT-31 | Streaks | **IMPLEMENTED** | daily.ts checkDaily | DailyState model | economy.test.ts | e2e claim | 1 grace day, no loss of items | — |
-| REQ-CAT-32 | Missions | **IMPLEMENTED** | packages/shared/src/missions.ts, routes/economy.ts, runs.ts | Progress on finish; claim | economy.test.ts, api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Results list mission progress | — |
+| REQ-CAT-32 | Missions | **IMPLEMENTED** | packages/shared/src/missions.ts, routes/economy.ts, runs.ts | Progress on finish; claim | economy.test.ts, api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Results list mission progress | — |
 | REQ-CAT-33 | Challenges | **IMPLEMENTED** | Weekly challenge: shared seed per ISO week, 5 attempts/day (advisory lock), own board | integrated | modes.test.ts (+ concurrency), e2e | PASS | — | — |
 | REQ-CAT-34 | Combo system | **IMPLEMENTED** | sim.ts tap() combo | HUD combo text | sim.test.ts (4,5,6,7 pts) | Not reliably reached in headless e2e (latency) | — | — |
-| REQ-CAT-35 | Score system | **IMPLEMENTED** | sim.ts, routes/runs.ts | HUD + results | sim.test.ts, api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres final==server | — | — |
-| REQ-CAT-36 | High score | **IMPLEMENTED** | runs.ts conditional bestScore update | /me bestScore, 'Yeni rekor' | api.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Atomic: only raises | — |
-| REQ-CAT-37 | Leaderboard | **IMPLEMENTED** | apps/api/src/routes/leaderboard.ts | UI 'Sıralama' | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Flagged users excluded | — |
+| REQ-CAT-35 | Score system | **IMPLEMENTED** | sim.ts, routes/runs.ts | HUD + results | sim.test.ts, api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres final==server | — | — |
+| REQ-CAT-36 | High score | **IMPLEMENTED** | runs.ts conditional bestScore update | /me bestScore, 'Yeni rekor' | api.test.ts | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Atomic: only raises | — |
+| REQ-CAT-37 | Leaderboard | **IMPLEMENTED** | apps/api/src/routes/leaderboard.ts | UI 'Sıralama' | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Flagged users excluded | — |
 | REQ-CAT-38 | Levels | **IMPLEMENTED** | rules.ts levelForRounds; act select 1/6/11 (User.maxAct) | integrated | modes.test.ts (shared+API) | API-level | — | Act chips UI shown only after unlocking |
 | REQ-CAT-39 | Difficulty curve | **IMPLEMENTED** | rules.ts omegaForLevel, wobbleForLevel, roundTimeMs | sim | sim.test.ts difficulty | unit only | Capped at 2x speed | — |
 | REQ-CAT-40 | Boss | **IMPLEMENTED** | rules.ts isBossLevel; sim.ts holeXAt drift | Boss toast, red outline | sim.test.ts (bossCleared, death regression) | Unit only (act 5 not reached in e2e) | — | — |
@@ -104,7 +113,7 @@ Counts are produced by a script from the checklist rows; nothing is estimated.
 | REQ-CAT-44 | Characters | **IMPLEMENTED** | CATALOG kind=character; puppetColor | /loadout | api.test.ts | Puppet drawn (screenshot) | — | — |
 | REQ-CAT-45 | Upgrades | **IMPLEMENTED** | economy.ts UPGRADES; runs.ts params | /shop/upgrade → run params | api.test.ts (levels 1-3, max 409, params) | e2e upgrade tab | — | — |
 | REQ-CAT-46 | Inventory | **IMPLEMENTED** | routes/economy.ts /inventory; InventoryItem | Profile screen | api.test.ts | PASS | Unique (userId,itemId) | — |
-| REQ-CAT-47 | Shop | **IMPLEMENTED** | /shop, /shop/buy | Mağaza screen | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | Concurrent buy → [200,409] | — |
+| REQ-CAT-47 | Shop | **IMPLEMENTED** | /shop, /shop/buy | Mağaza screen | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | Concurrent buy → [200,409] | — |
 | REQ-CAT-48 | Premium | **NOT_IMPLEMENTED** | none | none | NOT_TESTED | NOT_TESTED | — | Intentionally none (no real-money purchases) |
 | REQ-CAT-49 | Credits | **IMPLEMENTED** | Currency enum, ledger.ts | Grants/spends | api.test.ts | e2e | — | — |
 | REQ-CAT-50 | Gems | **IMPLEMENTED** | ledger.ts; boss + daily day5/7 | Revive, gold/dragon items | api.test.ts revive | PASS | Earned only | — |
@@ -127,59 +136,59 @@ Counts are produced by a script from the checklist rows; nothing is estimated.
 | REQ-CAT-67 | Backup | **IMPLEMENTED** | compose backup service (daily, 7-day retention), scripts/backup-db.sh, restore-check.sh | integrated | restore rehearsal | PASS: 9 tables row counts identical; backup file created in container | — | — |
 | REQ-CAT-68 | Documentation | **IMPLEMENTED** | README.md, docs/* |  | — | — | — | — |
 | REQ-CAT-69 | Metrics endpoint | **IMPLEMENTED** | apps/api/src/metrics.ts; GET /metrics (token in prod) | api + realtime | modes.test.ts | PASS | — | — |
-| REQ-UI-01 | UI: Home | **IMPLEMENTED** | apps/game/src/ui/app.ts home() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-02 | UI: Play | **IMPLEMENTED** | apps/game/src/ui/app.ts startRun() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-01 | UI: Home | **IMPLEMENTED** | apps/game/src/ui/app.ts home() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-02 | UI: Play | **IMPLEMENTED** | apps/game/src/ui/app.ts startRun() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-UI-03 | UI: Level Select | **IMPLEMENTED** | act chips in home() | integrated | API tests | PASS | — | — |
-| REQ-UI-04 | UI: Game HUD | **IMPLEMENTED** | apps/game/src/ui/app.ts hud()/updateHud | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-05 | UI: Score | **IMPLEMENTED** | apps/game/src/ui/app.ts [data-testid=score] | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-04 | UI: Game HUD | **IMPLEMENTED** | apps/game/src/ui/app.ts hud()/updateHud | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-05 | UI: Score | **IMPLEMENTED** | apps/game/src/ui/app.ts [data-testid=score] | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-UI-06 | UI: Combo | **IMPLEMENTED** | apps/game/src/ui/app.ts [data-testid=combo] | Real API | unit (combo not reached in headless) | NOT_TESTED | — | — |
-| REQ-UI-07 | UI: Missions | **IMPLEMENTED** | apps/game/src/ui/app.ts missions() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-08 | UI: Challenges | **IMPLEMENTED** | challenge() | integrated | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-09 | UI: Leaderboard | **IMPLEMENTED** | apps/game/src/ui/app.ts leaderboard() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-10 | UI: Daily Rewards | **IMPLEMENTED** | apps/game/src/ui/app.ts daily() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-11 | UI: Streaks | **IMPLEMENTED** | apps/game/src/ui/app.ts daily() streak text | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-12 | UI: Shop | **IMPLEMENTED** | apps/game/src/ui/app.ts shop() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-07 | UI: Missions | **IMPLEMENTED** | apps/game/src/ui/app.ts missions() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-08 | UI: Challenges | **IMPLEMENTED** | challenge() | integrated | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-09 | UI: Leaderboard | **IMPLEMENTED** | apps/game/src/ui/app.ts leaderboard() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-10 | UI: Daily Rewards | **IMPLEMENTED** | apps/game/src/ui/app.ts daily() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-11 | UI: Streaks | **IMPLEMENTED** | apps/game/src/ui/app.ts daily() streak text | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-12 | UI: Shop | **IMPLEMENTED** | apps/game/src/ui/app.ts shop() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-UI-13 | UI: Inventory | **IMPLEMENTED** | apps/game/src/ui/app.ts profileView() Envanter | Real API | manual code path; API tested | NOT_TESTED | — | — |
-| REQ-UI-14 | UI: Skins | **IMPLEMENTED** | apps/game/src/ui/app.ts shop() Lambalar | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-15 | UI: Upgrades | **IMPLEMENTED** | apps/game/src/ui/app.ts shop() Geliştirmeler | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-14 | UI: Skins | **IMPLEMENTED** | apps/game/src/ui/app.ts shop() Lambalar | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-15 | UI: Upgrades | **IMPLEMENTED** | apps/game/src/ui/app.ts shop() Geliştirmeler | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-UI-16 | UI: Profile | **IMPLEMENTED** | apps/game/src/ui/app.ts profileView() | Real API | API tested | NOT_TESTED | — | — |
-| REQ-UI-17 | UI: Settings | **IMPLEMENTED** | apps/game/src/ui/app.ts settings() | Real API | e2e persist | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-18 | UI: Notifications | **PARTIAL** | in-app inbox + local reminder toggle | integrated | native reminder not exercised | NOT_TESTED | — | — |
-| REQ-UI-19 | UI: Tutorial | **IMPLEMENTED** | apps/game/src/ui/app.ts showTutorial() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-20 | UI: Pause | **IMPLEMENTED** | pause() | integrated | e2e pause/resume/end | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-UI-21 | UI: Game Over | **IMPLEMENTED** | apps/game/src/ui/app.ts gameOver() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-17 | UI: Settings | **IMPLEMENTED** | apps/game/src/ui/app.ts settings() | Real API | e2e persist | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-18 | UI: Notifications | **IMPLEMENTED** | in-app inbox + on-device daily reminder (local notification); push infra for online builds | integrated | CI Android emulator (API 34): test reminder posted (dumpsys notification) | PASS | — | — |
+| REQ-UI-19 | UI: Tutorial | **IMPLEMENTED** | apps/game/src/ui/app.ts showTutorial() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-20 | UI: Pause | **IMPLEMENTED** | pause() | integrated | e2e pause/resume/end | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-21 | UI: Game Over | **IMPLEMENTED** | apps/game/src/ui/app.ts gameOver() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-UI-22 | UI: Revive | **IMPLEMENTED** | gameOver() revive | integrated | e2e revive (gems charged by server) | PASS | — | — |
-| REQ-UI-23 | UI: Results | **IMPLEMENTED** | apps/game/src/ui/app.ts renderResults() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-GP-01 | Gameplay: Game session start | **IMPLEMENTED** | POST /runs + scene.startRun | client sim + server replay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-GP-02 | Gameplay: Touch input | **IMPLEMENTED** | pointerdown | client sim + server replay | e2e mobile-touch | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-GP-03 | Gameplay: Mouse input | **IMPLEMENTED** | pointerdown | client sim + server replay | e2e desktop-mouse | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-GP-04 | Gameplay: Core interaction | **IMPLEMENTED** | tap() freezes lamp | client sim + server replay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-UI-23 | UI: Results | **IMPLEMENTED** | apps/game/src/ui/app.ts renderResults() | Real API | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-01 | Gameplay: Game session start | **IMPLEMENTED** | POST /runs + scene.startRun | client sim + server replay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-02 | Gameplay: Touch input | **IMPLEMENTED** | pointerdown | client sim + server replay | e2e mobile-touch | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-03 | Gameplay: Mouse input | **IMPLEMENTED** | pointerdown | client sim + server replay | e2e desktop-mouse | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-04 | Gameplay: Core interaction | **IMPLEMENTED** | tap() freezes lamp | client sim + server replay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-GP-05 | Gameplay: Collision / target detection | **IMPLEMENTED** | fit error (sim.ts tap) | client sim + server replay | sim.test.ts | unit/integration | — | — |
-| REQ-GP-06 | Gameplay: Score calculation | **IMPLEMENTED** | sim.ts | client sim + server replay | sim+api tests, e2e parity | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-06 | Gameplay: Score calculation | **IMPLEMENTED** | sim.ts | client sim + server replay | sim+api tests, e2e parity | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-GP-07 | Gameplay: Combo calculation | **IMPLEMENTED** | sim.ts | client sim + server replay | sim.test.ts | unit/integration | — | — |
 | REQ-GP-08 | Gameplay: Level progression | **IMPLEMENTED** | levelForRounds | client sim + server replay | sim.test.ts | unit/integration | — | — |
 | REQ-GP-09 | Gameplay: Difficulty increase | **IMPLEMENTED** | rules.ts | client sim + server replay | sim.test.ts | unit/integration | — | — |
-| REQ-GP-10 | Gameplay: Fail state | **IMPLEMENTED** | lives→0 | client sim + server replay | e2e lives=0 | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-GP-11 | Gameplay: Restart | **IMPLEMENTED** | 'Tekrar oyna' | client sim + server replay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-GP-12 | Gameplay: Reward acquisition | **IMPLEMENTED** | finish rewards | client sim + server replay | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-GP-13 | Gameplay: Game over screen | **IMPLEMENTED** | gameOver() | client sim + server replay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-GP-14 | Gameplay: Progress persistence | **IMPLEMENTED** | Run/User rows | client sim + server replay | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-10 | Gameplay: Fail state | **IMPLEMENTED** | lives→0 | client sim + server replay | e2e lives=0 | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-11 | Gameplay: Restart | **IMPLEMENTED** | 'Tekrar oyna' | client sim + server replay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-12 | Gameplay: Reward acquisition | **IMPLEMENTED** | finish rewards | client sim + server replay | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-13 | Gameplay: Game over screen | **IMPLEMENTED** | gameOver() | client sim + server replay | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-GP-14 | Gameplay: Progress persistence | **IMPLEMENTED** | Run/User rows | client sim + server replay | api.test.ts, e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-GP-15 | Gameplay: Session cleanup | **IMPLEMENTED** | abandoned-run close on /runs | client sim + server replay | api.test.ts | unit/integration | — | — |
 | REQ-MOB-01 | Mobile: Capacitor config | **IMPLEMENTED** | capacitor.config.ts | APK | APK build | APK build | — | — |
 | REQ-MOB-02 | Mobile: Android project | **IMPLEMENTED** | apps/game/android | APK | assembleDebug PASS | APK build | — | — |
 | REQ-MOB-03 | Mobile: iOS project | **IMPLEMENTED** | apps/game/ios | integrated | cap add ios | NOT_TESTED | — | — |
-| REQ-MOB-04 | Mobile: Mobile touch controls | **IMPLEMENTED** | pointerdown | APK | e2e Pixel 7 touch | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-MOB-05 | Mobile: Responsive UI | **IMPLEMENTED** | styles.css, layout() | APK | e2e 412x915 + 1280x800 | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-MOB-06 | Mobile: Mobile HUD | **IMPLEMENTED** | hud() | APK | e2e | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-MOB-04 | Mobile: Mobile touch controls | **IMPLEMENTED** | pointerdown | APK | e2e Pixel 7 touch | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-MOB-05 | Mobile: Responsive UI | **IMPLEMENTED** | styles.css, layout() | APK | e2e 412x915 + 1280x800 | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
+| REQ-MOB-06 | Mobile: Mobile HUD | **IMPLEMENTED** | hud() | APK | e2e | Playwright 14/14 PASS (+4 desktop-only skips; + offline edition e2e; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
 | REQ-MOB-07 | Mobile: Haptic feedback (native) | **IMPLEMENTED** | Capacitor Haptics | integrated | emulator vibrator service | PASS | — | — |
 | REQ-MOB-08 | Mobile: Sound handling | **IMPLEMENTED** | WebAudio SFX + settings toggle | integrated | e2e oscillator spy | PASS | — | — |
 | REQ-MOB-09 | Mobile: Secure storage | **IMPLEMENTED** | Keystore/Keychain plugin | integrated | emulator: no plaintext JWT in shared_prefs | PASS | — | — |
 | REQ-MOB-10 | Mobile: App lifecycle (pause/resume) | **IMPLEMENTED** | visibilitychange + App pause/backButton | integrated | emulator background→foreground | PASS | — | — |
 | REQ-MOB-11 | Mobile: Orientation handling | **IMPLEMENTED** | portrait in AndroidManifest + Info.plist | integrated | emulator forced rotation | PASS | — | — |
-| REQ-MOB-12 | Mobile: Mobile performance | **PARTIAL** | low-power WebGL, lazy 3D chunk | integrated | perf probe (CPU ×4) + emulator gfxinfo — no physical device | NOT_TESTED | — | — |
-| REQ-MOB-13 | Mobile: Safe areas | **PARTIAL** | env(safe-area-inset-*) CSS | APK | no notch device | NOT_TESTED | — | — |
-| REQ-MOB-14 | Mobile: Offline behavior | **IMPLEMENTED** | practice mode when API unreachable | integrated | e2e offline | Playwright 14/14 PASS (+4 desktop-only skips; Pixel 7 touch + desktop mouse) vs real API/Postgres | — | — |
-| REQ-MOB-15 | Mobile: Push notifications | **PARTIAL** | local daily reminder (opt-in); no FCM/APNs | integrated | server push needs FCM/APNs credentials | NOT_TESTED | — | — |
+| REQ-MOB-12 | Mobile: Mobile performance | **PARTIAL** | low-power WebGL, lazy 3D chunk | integrated | CI Android emulator (API 34): cold start 4.6 s online / 2.6 s offline; frame p50 40 ms, p95 150 ms (software GPU); PSS 92 MB; no physical device | PARTIAL | — | — |
+| REQ-MOB-13 | Mobile: Safe areas | **IMPLEMENTED** | edge-to-edge MainActivity passes system-bar/cutout/keyboard insets to CSS; env() on iOS/web | integrated | CI Android emulator (API 34): top inset 24px applied; offline e2e checks the CSS path | PASS | — | — |
+| REQ-MOB-14 | Mobile: Offline behavior | **IMPLEMENTED** | offline edition (VITE_BACKEND=local) + practice mode when the API is unreachable | integrated | e2e-offline + emulator offline APK smoke | PASS | — | — |
+| REQ-MOB-15 | Mobile: Push notifications | **PARTIAL** | FCM HTTP v1 sender, PushToken table, opt-in daily reminder push, client registration (VITE_PUSH=1); local reminder verified on device | integrated | push.test.ts against a mock FCM; real delivery needs Firebase credentials | PARTIAL | — | — |
 | REQ-ECO-01 | Economy: Shop prices | **IMPLEMENTED** | CATALOG | ledger | api.test.ts | PASS | — | — |
 | REQ-ECO-02 | Economy: Upgrade costs | **IMPLEMENTED** | UPGRADES increasing costs | ledger | economy.test.ts | PASS | — | — |
 | REQ-ECO-03 | Economy: Mission rewards | **IMPLEMENTED** | missions POOL | ledger | api.test.ts | PASS | — | — |
@@ -201,7 +210,7 @@ Counts are produced by a script from the checklist rows; nothing is estimated.
 | REQ-SEC-08 | Security: API security | **IMPLEMENTED** | helmet, zod strict, body limit 256KB | api | api.test.ts | PASS | — | — |
 | REQ-SEC-09 | Security: No client trust | **IMPLEMENTED** | server replay | api | api.test.ts | PASS | — | — |
 | REQ-SEC-10 | Security: Admin access control | **IMPLEMENTED** | requireAdmin DB check | api | api.test.ts | PASS | — | — |
-| REQ-SEC-11 | Security: Mobile security | **PARTIAL** | Keystore/Keychain token, cleartext disabled in release builds | integrated | no cert pinning | NOT_TESTED | — | — |
+| REQ-SEC-11 | Security: Mobile security | **PARTIAL** | Keystore token; cleartext off in release; Android certificate pinning (build-time pins, CapacitorHttp) | integrated | CI Android emulator (API 34): pinned host OK, wrong-pin host refused; iOS pinning documented only | PARTIAL | — | iOS NSPinnedDomains not generated; WebSocket (duel) not pinned |
 | REQ-SEC-12 | Security: Deep link validation | **IMPLEMENTED** | golgekuklaci://duel/<code> + ?duel= parsed by parseInviteUrl (strict regex, malformed → null) | integrated | invite.test.ts + emulator deep link | PASS | — | — |
 | REQ-SEC-13 | Security: Purchase validation (receipt) | **NOT_IMPLEMENTED** | no real-money purchases | none | N/A | NOT_TESTED | — | — |
 | REQ-SEC-14 | Security: Reward validation | **IMPLEMENTED** | idempotent ledger, server-computed | api | api.test.ts | PASS | — | — |
@@ -243,13 +252,13 @@ Counts are produced by a script from the checklist rows; nothing is estimated.
 | REQ-PROC-02 | docs/REQUIREMENTS_CHECKLIST.md | **IMPLEMENTED** | docs/ | — | N/A | File in commit | This file | — |
 | REQ-PROC-03 | docs/FINAL_IMPLEMENTATION_REPORT.md | **IMPLEMENTED** | docs/ | — | N/A | File in commit | — | — |
 | REQ-PROC-04 | docs/CODERABBIT_REPORT.md | **IMPLEMENTED** | docs/ | — | N/A | File in commit | — | — |
-| REQ-PROC-05 | CodeRabbit final review | **BLOCKED** | — | — | — | — | No CodeRabbit CLI/app/PR available | Substitute: independent code-review passes (round 1: 3, round 2: 4, round 3: 3), 24 findings fixed |
+| REQ-PROC-05 | CodeRabbit final review | **BLOCKED** | — | — | — | — | No CodeRabbit CLI/app/PR available | Substitute: independent code-review passes (round 1: 3, round 2: 4, round 3: 3, round 4: 1), 29 findings fixed |
 | REQ-PROC-06 | Runtime audit | **IMPLEMENTED** | Playwright + compose + APK | — | e2e | PASS | See §23 | — |
 | REQ-USR-01 | No crypto / no wallet (user) | **IMPLEMENTED** | — | — | grep: no wallet/web3/ethers deps | — | package.json files contain none | — |
 | REQ-USR-02 | Original concept (user) | **IMPLEMENTED** | Gölge Kuklacı (user-chosen) | — | — | — | Replaced stack-style prototype | Judgement |
 | REQ-USR-03 | Capacitor Android (user) | **IMPLEMENTED** | apps/game/android | — | assembleDebug | APK built | — | Device run NOT_TESTED |
 | REQ-USR-04 | Colyseus live duel (user) | **IMPLEMENTED** | DuelRoom + client duel screens | Colyseus | duel.test.ts, e2e | PASS | — | — |
-| REQ-USR-05 | Local reminder notifications (user) | **PARTIAL** | apps/game/src/lib/reminders.ts | Settings toggle | NOT_TESTED | No device | — | Local notifications only; server push needs FCM/APNs credentials |
+| REQ-USR-05 | Local reminder notifications (user) | **IMPLEMENTED** | apps/game/src/lib/reminders.ts | Settings toggle | CI emulator: notification posted | PASS | test-results/android/notification.txt | Server push needs FCM credentials (see docs/PUSH.md) |
 | REQ-USR-06 | iOS project (user) | **IMPLEMENTED** | apps/game/ios | cap add ios | — | Build BLOCKED (no macOS) | — | — |
 | REQ-USR-07 | Three.js / R3F menu (user) | **IMPLEMENTED** | apps/game/src/menu3d/Menu3D.tsx | lazy import in app.ts | headless render | PASS | — | — |
 | REQ-R3-01 | Duel invites & deep links | **IMPLEMENTED** | DuelRoom private option, lib/duel.ts, parseInviteUrl, intent-filter, URL scheme | Colyseus | duel.test.ts, invite.test.ts, e2e invite | PASS | — | — |
@@ -258,6 +267,10 @@ Counts are produced by a script from the checklist rows; nothing is estimated.
 | REQ-R3-04 | Realtime horizontal scaling | **IMPLEMENTED** | RedisPresence + RedisDriver in realtime-server.ts | Redis | cluster.test.ts (2 nodes) | PASS | — | — |
 | REQ-R3-05 | Economy simulation & rebalance | **IMPLEMENTED** | packages/shared/scripts/economy-sim.ts, docs/ECONOMY_SIMULATION.md | shared rules | economy tests | PASS | — | Casual players rarely earn gems (gem cosmetics effectively out of reach) |
 | REQ-R3-06 | Device testing in CI | **IMPLEMENTED** | .github/workflows/ci.yml (ios, android-device), scripts/*-smoke.sh | GitHub Actions | CI | iOS PASS; Android PASS | — | — |
+| REQ-R4-01 | Offline edition APK | **IMPLEMENTED** | apps/game/src/lib/local-backend.ts (VITE_BACKEND=local) | same Api contract as the HTTP client | local-backend.test.ts (8), e2e-offline, emulator offline APK smoke | PASS | golge-kuklaci-offline.apk (CI artifact + delivered) | Progress is per device; no duel/global board in this edition |
+| REQ-R4-02 | Server push infrastructure | **PARTIAL** | apps/api/src/push.ts, PushToken, /me/push-token, apps/game/src/lib/push.ts | API scheduler + client | push.test.ts (4, mock FCM) | Mock only | docs/PUSH.md | Needs Firebase project + service account |
+| REQ-R4-03 | Certificate pinning (Android) | **IMPLEMENTED** | apps/game/scripts/network-config.mjs, network_security_config.xml, CapacitorHttp | build-time env | CI emulator: correct pin + wrong pin hosts | PASS | docs/CERT_PINNING.md | iOS not generated |
+| REQ-R4-04 | Emulator performance measurement | **IMPLEMENTED** | scripts/android-smoke.sh (am start -W, gfxinfo, meminfo) | CI | android-device job | cold start 4.6 s online / 2.6 s offline; frame p50 40 ms, p95 150 ms (software GPU); PSS 92 MB | docs/PERFORMANCE.md | Emulator with software GPU, not a phone |
 
 ## 5. Feature Audit
 
@@ -321,7 +334,7 @@ Every §3 category is a REQ-CAT row above (plus REQ-CAT-69 metrics). Status come
 | REQ-UI-15 | Upgrades | IMPLEMENTED | e2e |
 | REQ-UI-16 | Profile | IMPLEMENTED | API tested |
 | REQ-UI-17 | Settings | IMPLEMENTED | e2e persist |
-| REQ-UI-18 | Notifications | PARTIAL | native reminder not exercised |
+| REQ-UI-18 | Notifications | IMPLEMENTED | CI Android emulator (API 34): test reminder posted (dumpsys notification) |
 | REQ-UI-19 | Tutorial | IMPLEMENTED | e2e |
 | REQ-UI-20 | Pause | IMPLEMENTED | e2e pause/resume/end |
 | REQ-UI-21 | Game Over | IMPLEMENTED | e2e |
@@ -396,10 +409,10 @@ Both were applied with `migrate deploy` to the dev, ci and docker databases.
 | REQ-MOB-09 | Secure storage | IMPLEMENTED | emulator: no plaintext JWT in shared_prefs |
 | REQ-MOB-10 | App lifecycle (pause/resume) | IMPLEMENTED | emulator background→foreground |
 | REQ-MOB-11 | Orientation handling | IMPLEMENTED | emulator forced rotation |
-| REQ-MOB-12 | Mobile performance | PARTIAL | perf probe (CPU ×4) + emulator gfxinfo — no physical device |
-| REQ-MOB-13 | Safe areas | PARTIAL | no notch device |
-| REQ-MOB-14 | Offline behavior | IMPLEMENTED | e2e offline |
-| REQ-MOB-15 | Push notifications | PARTIAL | server push needs FCM/APNs credentials |
+| REQ-MOB-12 | Mobile performance | PARTIAL | CI Android emulator (API 34): cold start 4.6 s online / 2.6 s offline; frame p50 40 ms, p95 150 ms (software GPU); PSS 92 MB; no physical device |
+| REQ-MOB-13 | Safe areas | IMPLEMENTED | CI Android emulator (API 34): top inset 24px applied; offline e2e checks the CSS path |
+| REQ-MOB-14 | Offline behavior | IMPLEMENTED | e2e-offline + emulator offline APK smoke |
+| REQ-MOB-15 | Push notifications | PARTIAL | push.test.ts against a mock FCM; real delivery needs Firebase credentials |
 
 **Android build: PASS.** The APK is built locally and in CI (`android` job). The CI `android-device` job additionally:
 - runs a KVM emulator (API 34) against a host API reached via 10.0.2.2 (cleartext only in that CI build)
@@ -613,14 +626,17 @@ Test doubles: none. API tests use a real Postgres database (`stagestack_ci`).
 | Area | Result | Where |
 |---|---|---|
 | Unit (shared) | PASS 34 | sim, economy, modes, invite, pow, antibot |
-| Unit (game) | PASS 6 | dom/storage/shapes |
-| Integration (API + Postgres) | PASS 36 | api, modes, admin-session tests |
+| Unit (game) | PASS 14 | dom/storage/shapes + offline backend (8) |
+| Integration (API + Postgres) | PASS 40 | api, modes, admin-session, push (mock FCM) tests |
 | Integration (Colyseus) | PASS 6 | duel.test.ts (5), cluster.test.ts (2 nodes) |
 | E2E (Playwright) | PASS 14, SKIPPED 4 (desktop-only by design) | full show + sound/vibration ×2, meta ×2, pause ×2, challenge ×2, offline ×2, duel, invite, revive, admin |
 | CI on GitHub | checks ✔, android ✔, ios ✔, android-device ✔ | .github/workflows/ci.yml |
 | iOS simulator | PASS | CI ios job |
 | Android emulator | PASS | CI android-device job |
-| Performance | MEASURED (headless, throttled) | docs/PERFORMANCE.md |
+| E2E offline edition | PASS 1 (no server running; no request leaves the page) | e2e-offline/offline.spec.ts |
+| Android emulator, offline APK | PASS | CI android-device job |
+| Certificate pinning | PASS (correct pin OK, wrong pin refused) | CI android-device job, pinning.txt |
+| Performance | MEASURED (headless, throttled; emulator) | docs/PERFORMANCE.md |
 | Physical devices | NOT_TESTED | — |
 
 ## 22. Build Results
@@ -664,7 +680,7 @@ Test doubles: none. API tests use a real Postgres database (`stagestack_ci`).
 | Leaderboard | Yes |
 | Progress saved | Yes |
 | Mobile layout | Yes in emulation; device NOT_TESTED |
-| Sound & haptics | NOT_TESTED |
+| Sound & haptics | Fired (e2e spies; emulator vibrator service) |
 | Docker stack | Yes: 6 services; duel smoke in containers (same room, playing, 2 players) |
 | HTTPS via Caddy | Yes: game/api/rt over TLS (verified), HSTS, 308 redirect, /metrics hidden; two browsers dueling over WSS |
 | Alerting | Yes: API stopped → GolgeApiDown firing → Alertmanager → webhook sink |
@@ -676,7 +692,7 @@ Test doubles: none. API tests use a real Postgres database (`stagestack_ci`).
 
 ## 24. Critical Issues
 
-- **CRITICAL SECURITY:** none open (all round-3 review findings fixed).
+- **CRITICAL SECURITY:** none open (all round-3 and round-4 review findings fixed).
 - **CRITICAL GAMEPLAY:** none open.
 - **CRITICAL ECONOMY:** none open. Inflation was found by simulation and fixed by the rebalance.
 - **CRITICAL DATABASE:** none.
@@ -691,25 +707,23 @@ Test doubles: none. API tests use a real Postgres database (`stagestack_ci`).
 | REQ-CAT-18 | Wallet authentication | NOT_IMPLEMENTED | Removed from scope by user: 'no crypto, no wallet' | none | Implement / verify per Missing column |
 | REQ-CAT-48 | Premium | NOT_IMPLEMENTED | Intentionally none (no real-money purchases) | none | Implement / verify per Missing column |
 | REQ-CAT-66 | Deployment | PARTIAL | No hosting target/domain configured (needs the owner's server + DNS) | CI (checks, Android APK, iOS simulator, Android emulator) green on GitHub; compose + Caddy TLS profile ready | Implement / verify per Missing column |
-| REQ-UI-18 | UI: Notifications | PARTIAL | NOT_TESTED | in-app inbox + local reminder toggle | Implement / verify per Missing column |
-| REQ-MOB-12 | Mobile: Mobile performance | PARTIAL | NOT_TESTED | low-power WebGL, lazy 3D chunk | Implement / verify per Missing column |
-| REQ-MOB-13 | Mobile: Safe areas | PARTIAL | NOT_TESTED | env(safe-area-inset-*) CSS | Implement / verify per Missing column |
-| REQ-MOB-15 | Mobile: Push notifications | PARTIAL | NOT_TESTED | local daily reminder (opt-in); no FCM/APNs | Implement / verify per Missing column |
+| REQ-MOB-12 | Mobile: Mobile performance | PARTIAL | PARTIAL | low-power WebGL, lazy 3D chunk | Implement / verify per Missing column |
+| REQ-MOB-15 | Mobile: Push notifications | PARTIAL | PARTIAL | FCM HTTP v1 sender, PushToken table, opt-in daily reminder push, client registration (VITE_PUSH=1); local reminder verified on device | Implement / verify per Missing column |
 | REQ-ECO-07 | Economy: Premium purchases | NOT_IMPLEMENTED | NOT_TESTED | none (by design) | Implement / verify per Missing column |
-| REQ-SEC-11 | Security: Mobile security | PARTIAL | NOT_TESTED | Keystore/Keychain token, cleartext disabled in release builds | Implement / verify per Missing column |
+| REQ-SEC-11 | Security: Mobile security | PARTIAL | iOS NSPinnedDomains not generated; WebSocket (duel) not pinned | Keystore token; cleartext off in release; Android certificate pinning (build-time pins, CapacitorHttp) | Implement / verify per Missing column |
 | REQ-SEC-13 | Security: Purchase validation (receipt) | NOT_IMPLEMENTED | NOT_TESTED | no real-money purchases | Implement / verify per Missing column |
-| REQ-PROC-05 | CodeRabbit final review | BLOCKED | Substitute: independent code-review passes (round 1: 3, round 2: 4, round 3: 3), 24 findings fixed | — | Implement / verify per Missing column |
-| REQ-USR-05 | Local reminder notifications (user) | PARTIAL | Local notifications only; server push needs FCM/APNs credentials | apps/game/src/lib/reminders.ts | Implement / verify per Missing column |
+| REQ-PROC-05 | CodeRabbit final review | BLOCKED | Substitute: independent code-review passes (round 1: 3, round 2: 4, round 3: 3, round 4: 1), 29 findings fixed | — | Implement / verify per Missing column |
+| REQ-R4-02 | Server push infrastructure | PARTIAL | Needs Firebase project + service account | apps/api/src/push.ts, PushToken, /me/push-token, apps/game/src/lib/push.ts | Implement / verify per Missing column |
 
 ## 26. Production Readiness
 
 | Area | Rating | Basis |
 |---|---|---|
 | Code Quality | READY | lint/typecheck clean; 9+ independent review passes; no placeholders/dead code |
-| Security | NEEDS_WORK | TLS, CSRF, PoW and revocation in place; missing cert pinning and an external pentest |
+| Security | NEEDS_WORK | TLS, CSRF, PoW, revocation, Android cert pinning in place; iOS pinning and an external pentest missing |
 | Functionality | READY | all requested features except deliberate exclusions (wallet, real-money purchases) |
-| Testing | NEEDS_WORK | 82 unit/integration + 14 e2e + CI device jobs; no physical-device or load tests |
-| Performance | NEEDS_WORK | measured headless/throttled only; physical devices not measured |
+| Testing | NEEDS_WORK | 94 unit/integration + 15 e2e + CI device jobs (online + offline APK); no physical-device or load tests |
+| Performance | NEEDS_WORK | measured headless/throttled and on the emulator (software GPU); physical devices not measured |
 | Scalability | READY | stateless API + Redis rate limits; Colyseus nodes share Redis presence/driver (tested) |
 | Economy | READY | simulated and rebalanced; idempotent, capped, transparent pacing; one noted fairness item (casual gems) |
 | Mobile | READY | Android emulator-verified; iOS simulator-verified; store signing outstanding |
@@ -718,12 +732,12 @@ Test doubles: none. API tests use a real Postgres database (`stagestack_ci`).
 
 ## 27. Final Conclusion
 
-After round 3, **188 of 200 requirements (94.00%) are IMPLEMENTED**: 7 PARTIAL, 4 NOT_IMPLEMENTED, 1 BLOCKED.
+After round 4, **194 of 204 requirements (95.10%) are IMPLEMENTED**: 5 PARTIAL, 4 NOT_IMPLEMENTED, 1 BLOCKED.
 
 The NOT_IMPLEMENTED items are deliberate: wallet auth (user decision), and premium tier, premium purchases and receipt validation (no real money).
 
 The remaining PARTIAL items need things outside this environment:
-- a server and domain for hosting
+- a server and domain for hosting (the offline APK needs neither)
 - FCM/APNs keys for server push
 - physical devices for haptics/performance measurements
 - store signing identities

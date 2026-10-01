@@ -11,7 +11,7 @@ CodeRabbit itself could not be run in this environment:
 | CodeRabbit CLI | Not installed (`which coderabbit` → not found) |
 | CodeRabbit GitHub App | No pull request exists (none was requested), so the App had nothing to review |
 
-Instead, the independent `code-review` tool of this Claude Code session was run over the committed diffs: three times in round 1, four times in round 2 and three times in round 3. **These are not CodeRabbit results.**
+Instead, the independent `code-review` tool of this Claude Code session was run over the committed diffs: three times in round 1, four times in round 2, three times in round 3 and once in round 4. **These are not CodeRabbit results.**
 
 ## Pass 1: `HEAD~1..HEAD` of the game commit (high effort)
 
@@ -89,15 +89,27 @@ Instead, the independent `code-review` tool of this Claude Code session was run 
 | 23 | `run-as sh -c` hung the emulator job | Per-file `run-as ls` / `exec-out cat` loop + adb timeouts |
 | 24 | Blind taps end the show (3 misses), so the pause button the script waited for no longer existed | Finish via the game-over "Sonuçlar" button when the show is already over |
 
+## Round 4 (offline edition, push, pinning, safe areas)
+
+### Pass 11: `977b3dd..HEAD` (medium effort)
+
+| # | Finding | Fix |
+|---|---|---|
+| 25 | Offline record history kept only the all-time top 50, so old high scores emptied this week's boards | Prune per board and week (`pruneHistory`) + test |
+| 26 | Any FCM 400 deleted the push token (a bad payload would wipe all tokens) | Only `UNREGISTERED` drops a token + test |
+| 27 | The day's reminder slot was claimed before sending and not released on failure | Released on transient errors, retried at the next check + test |
+| 28 | Edge-to-edge layout ignored the keyboard, so it could cover input fields | IME inset included in the bottom safe area |
+| 29 | `enablePush` added listeners on every call and could wait forever | Once per session, 20 s timeout, listeners removed |
+
 ## Re-run after changes
 
 | Step | Result |
 |---|---|
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
-| `pnpm test` | PASS (34 shared + 6 game + 42 API = 82) |
+| `pnpm test` | PASS (34 shared + 14 game + 46 API = 94) |
 | `pnpm build` | PASS (game + admin pages, 3D chunk) |
-| `pnpm e2e` (Playwright) | PASS 14, 4 desktop-only skips (incl. two-browser duel, invite, revive, admin panel) |
+| `pnpm e2e` (Playwright) | PASS 14, 4 desktop-only skips (incl. two-browser duel, invite, revive, admin panel) + offline edition PASS 1 |
 
 ## How to get a real CodeRabbit review
 
