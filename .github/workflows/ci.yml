@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+    # Review-only PRs (partial trees split for CodeRabbit's file limit) are not built; the branch push runs CI.
+    branches-ignore: [coderabbit-base, 'review/**']
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: stage
+          POSTGRES_PASSWORD: stage
+          POSTGRES_DB: stagestack_dev
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U stage" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      DATABASE_URL: postgresql://stage:stage@localhost:5432/stagestack_dev
+      TEST_DATABASE_URL: postgresql://stage:stage@localhost:5432/stagestack_ci
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-secret-ci-only-secret-0123456789
+      CORS_ORIGINS: http://localhost:4173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Create test database
+        run: PGPASSWORD=stage psql -h localhost -U stage -d stagestack_dev -c 'CREATE DATABASE stagestack_ci'
+      - run: pnpm --filter @stage/api exec prisma generate
+      - run: pnpm audit --prod --audit-level=moderate
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm --filter @stage/api exec prisma migrate deploy
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      - run: pnpm e2e:offline
+      - name: DAST - OWASP ZAP baseline scan of the API and the game page
+        run: |
+          nohup pnpm --filter @stage/api start > zap-api.log 2>&1 &
+          nohup pnpm --filter @stage/game preview > zap-game.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:3000/health >/dev/null && curl -sf localhost:4173 >/dev/null && break; sleep 2; done
+          mkdir -p test-results/zap && chmod 777 test-results/zap
+          for target in http://localhost:3000/health http://localhost:4173/; do
+            name=$(echo "$target" | tr -c 'a-z0-9' '_')
+            docker run --rm --network host -v "$PWD/test-results/zap:/zap/wrk:rw" mirror.gcr.io/zaproxy/zaproxy:stable \
+              zap-baseline.py -t "$target" -r "$name.html" -w "$name.md" -I
+          done
+          grep -h "FAIL-NEW\|WARN-NEW" test-results/zap/*.md | head -40 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: playwright, path: test-results, if-no-files-found: ignore }
+
+  android:
+    runs-on: ubuntu-latest
+    needs: checks
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @stage/game build
+      - run: cd apps/game && pnpm cap:sync
+      - run: cd apps/game/android && ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with: { name: app-debug-apk, path: apps/game/android/app/build/outputs/apk/debug/app-debug.apk }
+      - name: Offline edition APK (plays with no server; progression stored on the device)
+        env: { VITE_BACKEND: local }
+        run: |
+          pnpm --filter @stage/game build
+          cd apps/game && pnpm cap:sync && cd android && ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/golge-kuklaci-offline.apk"
+      - uses: actions/upload-artifact@v4
+        with: { name: golge-kuklaci-offline-apk, path: golge-kuklaci-offline.apk }
+
+  ios:
+    runs-on: macos-latest
+    needs: checks
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: TLS test hosts for certificate pinning (the simulator shares the Mac's network)
+        run: |
+          echo "127.0.0.1 golge-pin.test golge-badpin.test" | sudo tee -a /etc/hosts
+          OSSL="$(brew --prefix openssl@3)/bin/openssl"
+          "$OSSL" req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=golge-ci -keyout tls.key -out tls.crt \
+            -addext "subjectAltName=DNS:golge-pin.test,DNS:golge-badpin.test" -addext "extendedKeyUsage=serverAuth"
+          echo "PIN=$("$OSSL" x509 -in tls.crt -pubkey -noout | "$OSSL" pkey -pubin -outform der | "$OSSL" dgst -sha256 -binary | base64)" >> "$GITHUB_ENV"
+          echo "BACKUP_PIN=$("$OSSL" rand 32 | base64)" >> "$GITHUB_ENV"
+          nohup node scripts/tls-proxy.mjs tls.key tls.crt 8443 > tls-proxy.log 2>&1 &
+          sleep 2 && curl -s --cacert tls.crt -o /dev/null -w 'tls proxy: %{http_code}\n' https://golge-pin.test:8443/health
+      - name: Build the pinned iOS app (ATS NSPinnedDomains + pin self-test)
+        env: { VITE_PIN_SELFTEST: 'https://golge-pin.test:8443/health,https://golge-badpin.test:8443/health' }
+        run: |
+          pnpm --filter @stage/game build
+          cd apps/game
+          PIN_DOMAINS=golge-pin.test PIN_SHA256="$PIN,$BACKUP_PIN" PIN_TEST_BAD_DOMAINS=golge-badpin.test node scripts/network-config.mjs
+          PIN_DOMAINS=golge-pin.test npx cap sync ios
+      - run: TLS_CERT="$GITHUB_WORKSPACE/tls.crt" bash scripts/ios-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ios-simulator, path: test-results/ios, if-no-files-found: ignore }
+
+  android-device:
+    runs-on: ubuntu-latest
+    needs: checks
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: stage, POSTGRES_PASSWORD: stage, POSTGRES_DB: stagestack_dev }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U stage" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://stage:stage@localhost:5432/stagestack_dev
+      JWT_SECRET: ci-only-secret-ci-only-secret-0123456789
+      CORS_ORIGINS: https://localhost,http://localhost,capacitor://localhost
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @stage/api exec prisma generate && pnpm --filter @stage/api exec prisma migrate deploy
+      - name: Start API + realtime on the host (emulator reaches it as 10.0.2.2), HTTPS proxy on :8443
+        run: |
+          nohup pnpm --filter @stage/api start > api.log 2>&1 &
+          nohup pnpm --filter @stage/api realtime > realtime.log 2>&1 &
+          # Self-signed certificate for the pinned host (10.0.2.2) and the wrong-pin test host (127.0.0.1).
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=golge-ci -keyout tls.key -out tls.crt \
+            -addext "subjectAltName=IP:10.0.2.2,IP:127.0.0.1,DNS:localhost"
+          echo "PIN=$(openssl x509 -in tls.crt -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)" >> "$GITHUB_ENV"
+          echo "BACKUP_PIN=$(openssl rand 32 | base64)" >> "$GITHUB_ENV"
+          nohup node scripts/tls-proxy.mjs tls.key tls.crt 8443 > tls-proxy.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:3000/health && break; sleep 2; done
+          curl -sf --cacert tls.crt https://127.0.0.1:8443/health
+      - name: Build emulator APKs (online = pinned HTTPS API; offline edition)
+        run: |
+          cd apps/game
+          VITE_API_URL=https://10.0.2.2:8443 VITE_REALTIME_URL=ws://10.0.2.2:2567 pnpm build
+          CAP_DEV_CLEARTEXT=1 PIN_DOMAINS=10.0.2.2 PIN_SHA256="$PIN,$BACKUP_PIN" PIN_TEST_BAD_DOMAINS=127.0.0.1 DEV_CA_PEM="$GITHUB_WORKSPACE/tls.crt" pnpm cap:sync
+          (cd android && ./gradlew assembleDebug --no-daemon) && cp android/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/online.apk"
+          VITE_BACKEND=local pnpm build && pnpm cap:sync
+          (cd android && ./gradlew assembleDebug --no-daemon) && cp android/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/offline.apk"
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: timeout 1200 bash scripts/android-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator
+          path: |
+            test-results/android
+            api.log
+            tls-proxy.log
+          if-no-files-found: ignore

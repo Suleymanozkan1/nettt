@@ -1,0 +1,11 @@
+# Route all alerts to a webhook. Replace ALERT_WEBHOOK_URL (e.g. Slack/Discord/Teams relay) in production.
+route:
+  receiver: webhook
+  group_by: [alertname]
+  group_wait: 10s
+  repeat_interval: 4h
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url: http://alert-sink:8080/alerts
+        send_resolved: true

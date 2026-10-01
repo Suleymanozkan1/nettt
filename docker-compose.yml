@@ -1,0 +1,106 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: stage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stage}
+      POSTGRES_DB: stagestack
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stage -d stagestack"]
+      interval: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+  api:
+    image: golge-api
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    environment:
+      DATABASE_URL: postgresql://stage:${POSTGRES_PASSWORD:-stage}@postgres:5432/stagestack
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      # Only the compose network (Caddy) may set X-Forwarded-For; the API port is bound to localhost below.
+      TRUST_PROXY: ${TRUST_PROXY:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
+      METRICS_TOKEN: ${METRICS_TOKEN:-local-metrics-token-change-me}
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  realtime:
+    image: golge-api
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["sh", "-c", "cd apps/api && npx tsx src/realtime-server.ts"]
+    environment:
+      DATABASE_URL: postgresql://stage:${POSTGRES_PASSWORD:-stage}@postgres:5432/stagestack
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars)}
+      REALTIME_PORT: "2567"
+      # Shared presence/driver: run several realtime replicas behind a load balancer.
+      REDIS_URL: redis://redis:6379
+      METRICS_TOKEN: ${METRICS_TOKEN:-local-metrics-token-change-me}
+    ports: ["127.0.0.1:2567:2567"]
+    depends_on: [api]
+  backup:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-stage}
+    volumes: [backups:/backups]
+    # Daily logical backup, 7 days retained. Restore rehearsal: scripts/restore-check.sh
+    command: ["sh", "-c", "while true; do pg_dump -h postgres -U stage --no-owner stagestack | gzip > /backups/golge-$$(date -u +%Y%m%dT%H%M%SZ).sql.gz; find /backups -name '*.sql.gz' -mtime +7 -delete; sleep 86400; done"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  game:
+    build:
+      context: .
+      dockerfile: apps/game/Dockerfile
+      args:
+        VITE_API_URL: "${VITE_API_URL:-http://localhost:3000}"
+        VITE_REALTIME_URL: "${VITE_REALTIME_URL:-ws://localhost:2567}"
+    ports: ["8080:80"]
+    depends_on: [api]
+  # --- profile "tls": HTTPS reverse proxy (auto Let's Encrypt with real domains) ---
+  caddy:
+    image: caddy:2-alpine
+    profiles: [tls]
+    ports: ["80:80", "443:443"]
+    environment:
+      GAME_DOMAIN: ${GAME_DOMAIN:-game.localhost}
+      API_DOMAIN: ${API_DOMAIN:-api.localhost}
+      RT_DOMAIN: ${RT_DOMAIN:-rt.localhost}
+      TLS_ISSUER: ${TLS_ISSUER:-internal}
+    volumes: [./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro, caddy_data:/data]
+    depends_on: [api, realtime, game]
+  # --- profile "monitoring": metrics + alerting ---
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: [monitoring]
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    ports: ["9090:9090"]
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    configs:
+      - source: metrics_token
+        target: /etc/prometheus/metrics_token
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    profiles: [monitoring]
+    ports: ["9093:9093"]
+    volumes: [./deploy/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro]
+  alert-sink:
+    # Minimal webhook receiver that logs alerts (stand-in for Slack/Discord/PagerDuty relays).
+    image: mendhak/http-https-echo:35
+    profiles: [monitoring]
+    environment: { HTTP_PORT: "8080" }
+
+configs:
+  metrics_token:
+    content: ${METRICS_TOKEN:-local-metrics-token-change-me}
+
+volumes:
+  caddy_data:
+  pgdata:
+  backups:

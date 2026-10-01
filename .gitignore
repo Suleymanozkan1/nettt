@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-offline/
+.env
+*.log
+coverage/
+test-results/
+playwright-report/
+apps/game/android/app/build/
+apps/game/android/.gradle/
+apps/game/android/local.properties
+apps/game/android/app/src/main/res/raw/dev_ca.pem
+dist-pages/
