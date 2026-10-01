@@ -7,7 +7,7 @@ import { request } from 'node:http';
 const [key, cert, port = '8443', target = 'http://127.0.0.1:3000'] = process.argv.slice(2);
 const up = new URL(target);
 createServer({ key: readFileSync(key), cert: readFileSync(cert) }, (req, res) => {
-  console.log(`${req.method} ${req.headers.host} ${decodeURIComponent(req.url ?? '')}`); // CI evidence of which hosts were reached
+  console.log(`${req.method} ${req.headers.host} ${decodeURIComponent((req.url ?? '').replace(/\+/g, ' '))}`); // CI evidence of which hosts were reached
   const fwd = request({ host: up.hostname, port: up.port, path: req.url, method: req.method, headers: { ...req.headers, host: up.host } }, (r) => {
     res.writeHead(r.statusCode ?? 502, r.headers);
     r.pipe(res);
