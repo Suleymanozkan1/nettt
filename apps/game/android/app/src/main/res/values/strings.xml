@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Gölge Kuklacı</string>
-    <string name="title_activity_main">Gölge Kuklacı</string>
-    <string name="package_name">com.golgekuklaci.game</string>
-    <string name="custom_url_scheme">com.golgekuklaci.game</string>
-</resources>
