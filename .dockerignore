@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/.env
+apps/game/android
+test-results
+playwright-report
+.git

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+coverage/
+test-results/
+playwright-report/
+apps/game/android/app/build/
+apps/game/android/.gradle/
+apps/game/android/local.properties

@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PLAYER
+  ADMIN
+}
+
+enum RunStatus {
+  STARTED
+  FINISHED
+  REJECTED
+}
+
+enum Currency {
+  credits
+  gems
+}
+
+model User {
+  id            String   @id @default(cuid())
+  deviceIdHash  String?  @unique
+  email         String?  @unique
+  passwordHash  String?
+  displayName   String
+  role          Role     @default(PLAYER)
+  credits       Int      @default(0)
+  gems          Int      @default(0)
+  fans          Int      @default(0)
+  bestScore     Int      @default(0)
+  totalRuns     Int      @default(0)
+  skin          String   @default("lamp_candle")
+  character     String   @default("char_fox")
+  tutorialDone  Boolean  @default(false)
+  settings      Json     @default("{}")
+  flagged       Boolean  @default(false)
+  createdIp     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  runs         Run[]
+  transactions Transaction[]
+  inventory    InventoryItem[]
+  upgrades     UpgradeLevel[]
+  daily        DailyState?
+  missions     MissionProgress[]
+  events       Event[]
+
+  @@index([bestScore])
+  @@index([createdIp, createdAt])
+}
+
+model Run {
+  id           String    @id @default(cuid())
+  userId       String
+  seed         Int
+  params       Json
+  status       RunStatus @default(STARTED)
+  score        Int       @default(0)
+  fits         Int       @default(0)
+  misses       Int       @default(0)
+  perfects     Int       @default(0)
+  maxCombo     Int       @default(0)
+  level        Int       @default(1)
+  bossCleared  Int       @default(0)
+  revives      Int       @default(0)
+  durationMs   Int       @default(0)
+  rejectReason String?
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([status, finishedAt, score])
+}
+
+/// Append-only ledger. Every balance change is recorded; (userId, reason, refId, currency) is unique so a
+/// reward can never be granted twice for the same source.
+model Transaction {
+  id           String   @id @default(cuid())
+  userId       String
+  currency     Currency
+  amount       Int
+  balanceAfter Int
+  reason       String
+  refId        String
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reason, refId, currency])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+model InventoryItem {
+  id         String   @id @default(cuid())
+  userId     String
+  itemId     String
+  acquiredAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+}
+
+model UpgradeLevel {
+  id        String @id @default(cuid())
+  userId    String
+  upgradeId String
+  level     Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, upgradeId])
+}
+
+model DailyState {
+  userId       String  @id
+  streak       Int     @default(0)
+  lastClaimDay String?
+  graceUsed    Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MissionProgress {
+  id         String    @id @default(cuid())
+  userId     String
+  day        String
+  missionKey String
+  progress   Int       @default(0)
+  claimedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day, missionKey])
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  userId    String?
+  type      String
+  data      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([type, createdAt])
+}
+
+model EconomyConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
