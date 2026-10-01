@@ -119,7 +119,7 @@ jobs:
           cd apps/game
           PIN_DOMAINS=golge-pin.test PIN_SHA256="$PIN,$BACKUP_PIN" PIN_TEST_BAD_DOMAINS=golge-badpin.test node scripts/network-config.mjs
           PIN_DOMAINS=golge-pin.test npx cap sync ios
-      - run: TLS_CERT="$GITHUB_WORKSPACE/tls.crt" bash scripts/ios-smoke.sh
+      - run: TLS_CERT="$GITHUB_WORKSPACE/tls.crt" TLS_PROXY_LOG="$GITHUB_WORKSPACE/tls-proxy.log" bash scripts/ios-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: ios-simulator, path: test-results/ios, if-no-files-found: ignore }
@@ -176,6 +176,8 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
+          # Pinned: the "latest" emulator package (16428233) currently fails to download from dl.google.com.
+          emulator-build: 15917651
           target: google_apis
           disable-animations: true
           emulator-boot-timeout: 900
