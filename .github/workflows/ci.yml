@@ -65,3 +65,74 @@ jobs:
       - run: cd apps/game/android && ./gradlew assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with: { name: app-debug-apk, path: apps/game/android/app/build/outputs/apk/debug/app-debug.apk }
+
+  ios:
+    runs-on: macos-latest
+    needs: checks
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @stage/game build
+      - run: cd apps/game && npx cap sync ios
+      - run: bash scripts/ios-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ios-simulator, path: test-results/ios, if-no-files-found: ignore }
+
+  android-device:
+    runs-on: ubuntu-latest
+    needs: checks
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: stage, POSTGRES_PASSWORD: stage, POSTGRES_DB: stagestack_dev }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U stage" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://stage:stage@localhost:5432/stagestack_dev
+      JWT_SECRET: ci-only-secret-ci-only-secret-0123456789
+      CORS_ORIGINS: https://localhost,http://localhost,capacitor://localhost
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @stage/api exec prisma generate && pnpm --filter @stage/api exec prisma migrate deploy
+      - name: Start API + realtime on the host (emulator reaches it as 10.0.2.2)
+        run: |
+          nohup pnpm --filter @stage/api start > api.log 2>&1 &
+          nohup pnpm --filter @stage/api realtime > realtime.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:3000/health && break; sleep 2; done
+      - name: Build emulator APK (cleartext to 10.0.2.2 only in this CI build)
+        env: { VITE_API_URL: 'http://10.0.2.2:3000', VITE_REALTIME_URL: 'ws://10.0.2.2:2567', CAP_DEV_CLEARTEXT: '1' }
+        run: |
+          pnpm --filter @stage/game build
+          cd apps/game && npx cap sync android && cd android && ./gradlew assembleDebug --no-daemon
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash scripts/android-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator
+          path: |
+            test-results/android
+            api.log
+          if-no-files-found: ignore
