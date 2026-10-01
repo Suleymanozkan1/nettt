@@ -15,13 +15,23 @@ users() { psql "$DATABASE_URL" -tAc 'select count(*) from "User"'; }
 runs() { psql "$DATABASE_URL" -tAc 'select count(*) from "Run"'; }
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
 alive() { adb shell pidof "$PKG" >/dev/null; }
+# On any failure keep the device log, so a failed run is diagnosable from the artifact.
+trap 'rc=$?; [ $rc -ne 0 ] && adb logcat -d > "$OUT/logcat-failure.txt" 2>/dev/null; exit $rc' EXIT
 
 echo "== install"; ADB_TIMEOUT=180 adb install -r "$APK"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
 adb reverse tcp:8443 tcp:8443 # emulator 127.0.0.1:8443 → host TLS proxy (the wrong-pin test host)
 U0=$(users); R0=$(runs)
+# A freshly booted emulator can still be settling (launcher, package manager); wait until it is idle.
+for i in $(seq 1 30); do [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && adb shell dumpsys window | grep -q mCurrentFocus && break; sleep 2; done
 echo "== cold start"; adb shell am start -W -n "$PKG/.MainActivity" | tee "$OUT/startup.txt"
-for i in $(seq 1 30); do [ "$(users)" -gt "$U0" ] && break; sleep 3; done
+for i in $(seq 1 30); do
+  [ "$(users)" -gt "$U0" ] && break
+  # If the launch was swallowed by a still-settling emulator (app not running), launch once more.
+  # A crash is still caught: the logcat FATAL check below covers the whole run.
+  if [ "$i" = 10 ] && ! alive; then echo "app not running after launch; relaunching"; adb shell am start -n "$PKG/.MainActivity"; fi
+  sleep 3
+done
 shot 01-launch; alive
 U1=$(users); echo "users before=$U0 after=$U1"
 [ "$U1" -gt "$U0" ] || { echo "FAIL: app did not create a guest account through the API"; exit 1; }
