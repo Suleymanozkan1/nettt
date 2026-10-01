@@ -31,6 +31,7 @@ OUT="$OUT" PIN_CHECK=1 timeout 420 node scripts/android-webview-e2e.mjs | tee "$
 F1=$(psql "$DATABASE_URL" -tAc "select count(*) from \"Run\" where status='FINISHED'")
 R1=$(runs); echo "runs before=$R0 after=$R1 finished=$F1" | tee "$OUT/runs.txt"
 [ "$F1" -ge 1 ] || { echo "FAIL: no server-verified run from the device"; exit 1; }
+adb logcat -d | grep -iE "pin verification|certificate pinning|SSLPeerUnverified" | head -5 > "$OUT/pinning-logcat.txt" || true
 
 echo "== haptics reached the Android vibrator service?"
 adb shell dumpsys vibrator_manager > "$OUT/vibrator.txt" 2>&1 || adb shell dumpsys vibrator > "$OUT/vibrator.txt" 2>&1 || true

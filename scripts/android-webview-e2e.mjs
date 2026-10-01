@@ -79,15 +79,17 @@ console.log('local notification posted');
 await device.screenshot({ path: `${OUT}/${tag}13-notification.png` });
 
 if (process.env.PIN_CHECK === '1') {
-  // Both hosts serve the same certificate: only the pin decides.
+  // Both hosts serve the same certificate: only the pin decides. POST goes straight through the native bridge
+  // (GETs are proxied and lose the native error text), so a refusal carries the TLS exception message.
   const probe = (url) => page.evaluate(async (u) => {
-    try { const r = await fetch(u); return `ok ${r.status}`; } catch (e) { return `error ${e instanceof Error ? e.message : String(e)}`; }
+    try { const r = await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); return `ok ${r.status}`; }
+    catch (e) { return `error ${e instanceof Error ? e.message : String(e)}`; }
   }, url);
-  const good = await probe('https://10.0.2.2:8443/health');
-  const bad = await probe('https://127.0.0.1:8443/health');
+  const good = await probe('https://10.0.2.2:8443/auth/logout-all');
+  const bad = await probe('https://127.0.0.1:8443/auth/logout-all');
   console.log('pinned host:', good, '| wrong-pin host:', bad);
   writeFileSync(`${OUT}/pinning.txt`, `pinned: ${good}\nwrong pin: ${bad}\n`);
-  if (!good.startsWith('ok 200')) throw new Error('pinned host should be reachable');
+  if (!good.startsWith('ok ')) throw new Error(`pinned host should be reachable: ${good}`);
   if (!/^error .*(pin|certificate|ssl)/i.test(bad)) throw new Error(`wrong-pin host must be refused by pinning: ${bad}`);
 }
 await device.close();
