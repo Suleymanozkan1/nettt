@@ -73,19 +73,26 @@ export function createLocalApi(store: KeyValue = storage, now: () => Date = () =
       const raw = await store.get(STATE_KEY);
       let parsed: LocalState | null = null;
       try { parsed = raw ? (JSON.parse(raw) as LocalState) : null; } catch { parsed = null; }
-      cache = parsed?.v === 1 ? { ...fresh(), ...parsed } : fresh();
+      const base = fresh();
+      // Nested objects are merged too, so an older or partial save never yields undefined counters (NaN caps).
+      cache = parsed?.v === 1
+        ? { ...base, ...parsed, settings: { ...base.settings, ...parsed.settings }, daily: { ...base.daily, ...parsed.daily }, day: { ...base.day, ...parsed.day } }
+        : base;
     }
     const today = utcDay(now());
     if (cache.day.key !== today) cache.day = { key: today, shows: 0, showGems: 0, challenges: 0, missions: {}, claimed: [] };
     return cache;
   }
 
-  /** Serialised read-modify-write; the state is persisted after every mutation. */
+  /**
+   * Serialised read-modify-write on a copy of the state: it is persisted and becomes current only if the operation
+   * succeeds, so a rejected run or failed spend never leaves half-applied changes behind.
+   */
   function tx<T>(fn: (s: LocalState) => T | Promise<T>, write = true): Promise<T> {
     const run = queue.then(async () => {
-      const s = await load();
+      const s = structuredClone(await load());
       const out = await fn(s);
-      if (write) await store.set(STATE_KEY, JSON.stringify(s));
+      if (write) { await store.set(STATE_KEY, JSON.stringify(s)); cache = s; }
       return out;
     });
     queue = run.catch(() => undefined);

@@ -20,7 +20,7 @@ await page.getByTestId('play').click();
 const stats = await page.evaluate(() => new Promise((resolve) => {
   const deltas = []; let last = performance.now(); const end = last + 10_000;
   const longTasks = [];
-  try { new PerformanceObserver((l) => l.getEntries().forEach((e) => longTasks.push(e.duration))).observe({ type: 'longtask', buffered: true }); } catch { /* unsupported */ }
+  try { new PerformanceObserver((l) => l.getEntries().forEach((e) => longTasks.push(e.duration))).observe({ type: 'longtask' }); } catch { /* unsupported */ }
   const tapper = setInterval(() => document.querySelector('#game canvas')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })), 900);
   const frame = (now) => {
     deltas.push(now - last); last = now;

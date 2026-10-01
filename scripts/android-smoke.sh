@@ -13,6 +13,7 @@ OUT=test-results/android
 mkdir -p "$OUT"
 users() { psql "$DATABASE_URL" -tAc 'select count(*) from "User"'; }
 runs() { psql "$DATABASE_URL" -tAc 'select count(*) from "Run"'; }
+finished() { psql "$DATABASE_URL" -tAc "select count(*) from \"Run\" where status='FINISHED'"; }
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
 alive() { adb shell pidof "$PKG" >/dev/null; }
 # On any failure keep the device log, so a failed run is diagnosable from the artifact.
@@ -21,7 +22,7 @@ trap 'rc=$?; [ $rc -ne 0 ] && adb logcat -d > "$OUT/logcat-failure.txt" 2>/dev/n
 echo "== install"; ADB_TIMEOUT=180 adb install -r "$APK"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
 adb reverse tcp:8443 tcp:8443 # emulator 127.0.0.1:8443 → host TLS proxy (the wrong-pin test host)
-U0=$(users); R0=$(runs)
+U0=$(users); R0=$(runs); F0=$(finished)
 # A freshly booted emulator can still be settling (launcher, package manager); wait until it is idle.
 for i in $(seq 1 30); do [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && adb shell dumpsys window | grep -q mCurrentFocus && break; sleep 2; done
 echo "== cold start"; adb shell am start -W -n "$PKG/.MainActivity" | tee "$OUT/startup.txt"
@@ -38,9 +39,9 @@ U1=$(users); echo "users before=$U0 after=$U1"
 
 echo "== onboarding → play with real touches → server-verified result (Playwright drives the WebView)"
 OUT="$OUT" PIN_CHECK=1 timeout 420 node scripts/android-webview-e2e.mjs | tee "$OUT/webview-e2e.txt"
-F1=$(psql "$DATABASE_URL" -tAc "select count(*) from \"Run\" where status='FINISHED'")
-R1=$(runs); echo "runs before=$R0 after=$R1 finished=$F1" | tee "$OUT/runs.txt"
-[ "$F1" -ge 1 ] || { echo "FAIL: no server-verified run from the device"; exit 1; }
+F1=$(finished)
+R1=$(runs); echo "runs before=$R0 after=$R1 finished before=$F0 after=$F1" | tee "$OUT/runs.txt"
+[ "$F1" -gt "$F0" ] || { echo "FAIL: this test's run was not server-verified (FINISHED)"; exit 1; }
 adb logcat -d | grep -iE "pin verification|certificate pinning|SSLPeerUnverified" | head -5 > "$OUT/pinning-logcat.txt" || true
 
 echo "== haptics reached the Android vibrator service?"
@@ -59,8 +60,10 @@ adb shell settings put system user_rotation 0
 
 echo "== secure storage: JWT must not be stored in plain shared_prefs"
 : > "$OUT/shared_prefs.txt"
-for f in $(ADB_TIMEOUT=15 adb shell "run-as $PKG ls shared_prefs" 2>/dev/null | tr -d '\r'); do
-  ADB_TIMEOUT=15 adb exec-out "run-as $PKG cat shared_prefs/$f" >> "$OUT/shared_prefs.txt" 2>/dev/null || true
+# The inspection itself must succeed: an unreadable directory or file is a failure, not a pass.
+PREFS=$(ADB_TIMEOUT=15 adb shell "run-as $PKG ls shared_prefs" | tr -d '\r') || { echo "FAIL: cannot list shared_prefs"; exit 1; }
+for f in $PREFS; do
+  ADB_TIMEOUT=15 adb exec-out "run-as $PKG cat shared_prefs/$f" >> "$OUT/shared_prefs.txt" || { echo "FAIL: cannot read shared_prefs/$f"; exit 1; }
 done
 echo "shared_prefs bytes: $(wc -c < "$OUT/shared_prefs.txt")"
 if grep -q 'eyJhbGci' "$OUT/shared_prefs.txt"; then echo "FAIL: plaintext JWT in shared_prefs"; exit 1; fi
