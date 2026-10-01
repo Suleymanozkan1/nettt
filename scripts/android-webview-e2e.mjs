@@ -21,7 +21,8 @@ await page.getByTestId('play').waitFor({ timeout: 30_000 });
 await page.goto(new URL('/?debug=1', page.url()).toString());
 await page.getByTestId('play').waitFor({ timeout: 60_000 });
 await device.screenshot({ path: `${OUT}/10-home.png` });
-await page.getByTestId('play').click();
+// The play button pulses forever (never 'stable' for Playwright); force the click.
+await page.getByTestId('play').click({ force: true });
 await page.getByTestId('pause').waitFor({ timeout: 30_000 });
 
 // Real touches through the Android input system.
@@ -36,8 +37,8 @@ const state = await page.evaluate(() => window.__stage.state());
 console.log('after OS touches:', JSON.stringify(state));
 if (!state || state.taps < 1) throw new Error('no OS touch reached the game');
 
-await page.getByTestId('pause').click();
-await page.getByRole('button', { name: /Gösteriyi bitir/ }).click();
+await page.getByTestId('pause').click({ force: true });
+await page.getByRole('button', { name: /Gösteriyi bitir/ }).click({ force: true });
 await page.getByTestId('verified').waitFor({ timeout: 30_000 });
 const final = await page.getByTestId('final-score').textContent();
 console.log('server-verified final score:', final);
