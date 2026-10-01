@@ -12,5 +12,6 @@ export const metrics = {
   rewardsPaused: new Gauge({ name: 'golge_rewards_paused', help: '1 while the economy circuit breaker is open', registers: [registry] }),
   duelRooms: new Gauge({ name: 'golge_duel_rooms', help: 'Open duel rooms', registers: [registry] }),
   duelMatches: new Counter({ name: 'golge_duel_matches_total', help: 'Finished duels', registers: [registry] }),
+  pushSent: new Counter({ name: 'golge_push_sent_total', help: 'Push notifications sent via FCM', labelNames: ['result'], registers: [registry] }),
   duelRejectedTaps: new Counter({ name: 'golge_duel_rejected_taps_total', help: 'Duel taps outside the server time window', registers: [registry] }),
 };

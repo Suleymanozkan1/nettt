@@ -9,7 +9,7 @@
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "cap:sync": "cap sync android"
+    "cap:sync": "node scripts/network-config.mjs && cap sync android"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "7.1.6",
@@ -19,6 +19,7 @@
     "@capacitor/haptics": "^7.0.2",
     "@capacitor/ios": "^7.6.9",
     "@capacitor/local-notifications": "^7.0.7",
+    "@capacitor/push-notifications": "^7.0.7",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
     "@stage/shared": "workspace:*",

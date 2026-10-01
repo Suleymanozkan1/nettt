@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { FULL_REWARD_SHOWS_PER_DAY, CATALOG, DEFAULT_CHARACTER, DEFAULT_PARAMS, DEFAULT_SKIN, MAX_REVIVES, ROUNDS_PER_LEVEL, BOSS_EVERY, startLives, type RunInput, type RunParams, type RunSummary, type SimEvent } from '@stage/shared';
 import type { Room } from 'colyseus.js';
-import { api, ApiError, type ActiveEvent, type FinishResult, type Profile, type RunMode } from '../lib/api';
+import { api, ApiError, LOCAL_BACKEND, type ActiveEvent, type FinishResult, type Profile, type RunMode } from '../lib/api';
 import { joinDuel, type DuelJoin, type DuelResult, type DuelStateView } from '../lib/duel';
 import { INVITE_CODE, inviteLinks, parseInviteUrl } from '@stage/shared';
 import { setDailyReminder } from '../lib/reminders';
+import { enablePush } from '../lib/push';
 import { setSoundEnabled, sfx } from '../lib/audio';
 import { setHapticsEnabled } from '../lib/haptics';
 import type { StageScene } from '../game/StageScene';
@@ -19,6 +20,7 @@ const ERRORS: Record<string, string> = {
   insufficient_funds: 'Yetersiz bakiye', already_owned: 'Zaten sende', already_claimed: 'Bugün zaten alındı',
   rewards_paused: 'Ödüller şu an geçici olarak durduruldu', email_taken: 'Bu e-posta kayıtlı', invalid_credentials: 'E-posta veya şifre hatalı',
   validation_error: 'Bilgileri kontrol et', too_many_accounts: 'Bu ağdan çok fazla hesap açıldı', offline: 'Bağlantı yok',
+  online_only: 'Bu özellik çevrimiçi sürümde', challenge_attempts_used: 'Bugünkü deneme hakların bitti', act_locked: 'Bu perde henüz açılmadı',
 };
 const errText = (e: unknown) => (e instanceof ApiError ? ERRORS[e.code] ?? 'Bir şeyler ters gitti' : 'Bir şeyler ters gitti');
 
@@ -39,7 +41,7 @@ export class App {
 
   /** Opens the duel lobby for an invite code coming from a deep link or ?duel= web link. */
   openInvite(code: string): void {
-    if (!INVITE_CODE.test(code)) return;
+    if (LOCAL_BACKEND || !INVITE_CODE.test(code)) return;
     // An invite interrupts whatever is running: a solo show is abandoned (the server closes it later).
     if (this.run && this.run.mode !== 'duel') { this.scene.stop(); this.run = null; }
     void this.leaveDuel();
@@ -63,6 +65,10 @@ export class App {
       }
       this.offline = true;
       if (e instanceof ApiError && e.code !== 'offline') this.bootError = errText(e);
+    }
+    if (this.profile?.settings.notifications) {
+      void setDailyReminder(true).catch(() => false);
+      void enablePush(api.registerPush).catch(() => false);
     }
     this.show(this.profile && !this.profile.onboarded ? 'onboarding' : 'home');
     // Web invite link (?duel=CODE): validated by parseInviteUrl before anything happens.
@@ -168,6 +174,7 @@ export class App {
     const progress = p ? (p.fans - p.levelFloor) / Math.max(1, p.nextLevelFans - p.levelFloor) : 0;
     return h('div', { class: 'panel home' },
       this.bar(),
+      LOCAL_BACKEND ? h('p', { class: 'banner', 'data-testid': 'offline-edition' }, 'Çevrimdışı sürüm: ilerlemen bu cihazda saklanır.') : null,
       this.offline ? h('p', { class: 'banner' }, `${this.bootError ? `${this.bootError}. ` : 'Çevrimdışı. '}Antrenman modu: puan ve ödüller kaydedilmez.`) : null,
       h('h1', { class: 'logo' }, 'GÖLGE', h('br'), 'KUKLACI'),
       h('p', { class: 'muted tagline' }, 'Lambayı doğru anda durdur, gölgeyi kalıba oturt.'),
@@ -180,7 +187,7 @@ export class App {
       p && p.startActs.length > 1 ? h('div', { class: 'tabs acts', role: 'radiogroup', 'aria-label': 'Başlangıç perdesi' }, ...p.startActs.map((a) =>
         h('button', { class: a === this.startAct ? 'on' : '', role: 'radio', 'aria-checked': a === this.startAct, 'data-testid': `act-${a}`, onclick: () => { this.startAct = a; this.show('home'); } }, `${a}. perde`))) : null,
       h('div', { class: 'grid' },
-        nav('⚔ Düello', 'duel'),
+        LOCAL_BACKEND ? null : nav('⚔ Düello', 'duel'),
         nav('🏁 Meydan Okuma', 'challenge'),
         nav('🎁 Günlük', 'daily', this.notes.some((n) => n.go === 'daily')),
         nav('🎯 Görevler', 'missions', this.notes.some((n) => n.go === 'missions')),
@@ -385,7 +392,7 @@ export class App {
 
   private async leaderboard(period: 'all' | 'weekly' | 'challenge'): Promise<HTMLElement> {
     const data = await api.leaderboard(period);
-    const panel: HTMLElement = h('div', { class: 'panel' }, this.back(), h('h2', {}, 'Sıralama'),
+    const panel: HTMLElement = h('div', { class: 'panel' }, this.back(), h('h2', {}, LOCAL_BACKEND ? 'Rekorlarım' : 'Sıralama'),
       h('div', { class: 'tabs' }, ...(['all', 'weekly', 'challenge'] as const).map((p) => h('button', { class: p === period ? 'on' : '', onclick: async () => panel.replaceWith(await this.leaderboard(p)) }, p === 'all' ? 'Tüm zamanlar' : p === 'weekly' ? 'Bu hafta' : 'Meydan okuma'))),
       h('ol', { class: 'board', 'data-testid': 'leaderboard' }, ...data.entries.map((e) => h('li', { class: e.me ? 'me' : '' }, h('span', {}, `#${e.rank}`), h('span', {}, e.name), h('b', {}, fmt(e.score))))),
       data.entries.length === 0 ? h('p', { class: 'muted' }, 'Henüz doğrulanmış skor yok. İlk sen ol!') : null,
@@ -457,7 +464,7 @@ export class App {
     return h('div', { class: 'panel' }, this.back(), h('h2', {}, 'Gelen kutusu'),
       this.notes.length ? h('div', { class: 'list' }, ...this.notes.map((n) => h('button', { class: 'row', onclick: () => this.show(n.go) }, n.text)))
         : h('p', { class: 'muted' }, on ? 'Yeni bir şey yok.' : 'Hatırlatmalar kapalı.'),
-      h('p', { class: 'muted small' }, on ? 'Hatırlatmalar açık (yalnızca oyun içinde).' : 'Ayarlar’dan hatırlatmaları açabilirsin. Oyun dışına bildirim gönderilmez.'));
+      h('p', { class: 'muted small' }, on ? 'Hatırlatmalar açık: burada ve telefonda her gün 19:00’da yerel bir bildirim.' : 'Ayarlar’dan hatırlatmaları açabilirsin. Bildirimler cihazında oluşturulur; dışarıya veri gönderilmez.'));
   }
 
   private settings(): HTMLElement {
@@ -470,6 +477,7 @@ export class App {
         try { const r = await api.updateSettings({ [key]: on }); if (p) p.settings = r.settings; await this.refreshNotes(); } catch (err) { toast(errText(err), 'error'); }
         if (key === 'notifications') {
           const native = await setDailyReminder(on).catch(() => false);
+          if (on) void enablePush(api.registerPush).catch(() => false);
           if (on) toast(native ? 'Her gün 19:00’da hatırlatılacak' : 'Hatırlatmalar oyun içi gelen kutusunda görünür', 'info');
         }
       } }));
@@ -486,11 +494,11 @@ export class App {
     };
     return h('div', { class: 'panel' }, this.back(), h('h2', {}, 'Ayarlar'),
       toggle('sound', 'Ses efektleri'), toggle('haptics', 'Titreşim'), toggle('notifications', 'Hatırlatmalar'),
-      h('h3', {}, 'Hesap'),
-      p?.registered ? h('p', { class: 'muted' }, 'İlerlemen hesabına kaydediliyor.') : h('p', { class: 'muted' }, 'Misafir olarak oynuyorsun. İlerlemeni e-posta hesabıyla sakla:'),
-      p?.registered ? null : h('div', { class: 'form' }, email, pass,
+      LOCAL_BACKEND ? h('p', { class: 'muted' }, 'Çevrimdışı sürüm: hesap, düello ve küresel sıralama çevrimiçi sürümde.') : h('h3', {}, 'Hesap'),
+      LOCAL_BACKEND ? null : p?.registered ? h('p', { class: 'muted' }, 'İlerlemen hesabına kaydediliyor.') : h('p', { class: 'muted' }, 'Misafir olarak oynuyorsun. İlerlemeni e-posta hesabıyla sakla:'),
+      LOCAL_BACKEND || p?.registered ? null : h('div', { class: 'form' }, email, pass,
         h('button', { onclick: () => auth('register') }, 'Hesabı kaydet'), h('button', { onclick: () => auth('login') }, 'Giriş yap')),
-      p ? h('button', { 'data-testid': 'logout-all', onclick: async () => {
+      p && !LOCAL_BACKEND ? h('button', { 'data-testid': 'logout-all', onclick: async () => {
         try { await api.logoutAll(); await api.logout(); toast('Tüm cihazlardan çıkış yapıldı', 'info'); await this.boot(); } catch (e) { toast(errText(e), 'error'); }
       } }, 'Tüm cihazlardan çıkış yap') : null,
       h('p', { class: 'muted small' }, 'Gölge Kuklacı’da reklam, gerçek parayla satın alma ve şans kutusu yoktur.'));

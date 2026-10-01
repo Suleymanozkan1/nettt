@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { DEFAULT_SETTINGS, SettingsBody, OnboardingBody, playerLevelForFans, fansForPlayerLevel, REVIVE_GEM_COST, unlockedStartActs, type Settings } from '@stage/shared';
+import { z } from 'zod';
 import { HttpError, parse } from '../errors';
 import { userId } from '../app';
 
@@ -41,6 +42,20 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     const { displayName } = parse(OnboardingBody, req.body);
     await prisma.user.update({ where: { id: userId(req) }, data: { displayName, onboarded: true } });
     return { displayName, onboarded: true };
+  });
+
+  // Push token registration (builds with push enabled). A token belongs to one account: re-registering moves it.
+  const PushTokenBody = z.object({ token: z.string().min(16).max(4096), platform: z.enum(['android', 'ios']) }).strict();
+  app.post('/me/push-token', { onRequest: [app.authenticate] }, async (req) => {
+    const { token, platform } = parse(PushTokenBody, req.body);
+    const uid = userId(req);
+    await prisma.pushToken.upsert({ where: { token }, create: { token, platform, userId: uid }, update: { userId: uid, platform } });
+    return { ok: true };
+  });
+  app.delete('/me/push-token', { onRequest: [app.authenticate] }, async (req) => {
+    const { token } = parse(PushTokenBody.pick({ token: true }), req.body);
+    await prisma.pushToken.deleteMany({ where: { token, userId: userId(req) } });
+    return { ok: true };
   });
 
   app.patch('/me/settings', { onRequest: [app.authenticate] }, async (req) => {

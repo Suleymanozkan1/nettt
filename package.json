@@ -13,6 +13,7 @@
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "e2e": "playwright test",
+    "e2e:offline": "playwright test -c playwright.offline.config.ts",
     "db:migrate": "pnpm --filter @stage/api db:migrate"
   },
   "devDependencies": {

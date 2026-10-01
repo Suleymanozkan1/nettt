@@ -55,6 +55,7 @@ model User {
   missions     MissionProgress[]
   events       Event[]
   duelWins     DuelMatch[]
+  pushTokens   PushToken[]
 
   @@index([bestScore])
   @@index([createdIp, createdAt])
@@ -195,4 +196,17 @@ model GameEvent {
   createdAt   DateTime @default(now())
 
   @@index([startsAt, endsAt])
+}
+
+/// Device push token (FCM; APNs via FCM). Registered only by builds with push enabled.
+model PushToken {
+  id          String   @id @default(cuid())
+  userId      String
+  token       String   @unique
+  platform    String
+  lastSentDay String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

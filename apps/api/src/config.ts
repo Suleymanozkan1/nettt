@@ -18,6 +18,11 @@ const Env = z.object({
   METRICS_TOKEN: z.string().min(16).optional(),
   /** Proof-of-work difficulty (leading zero bits) for creating/logging in guest accounts. */
   POW_BITS: z.coerce.number().int().min(0).max(24).default(16),
+  /** Firebase service-account JSON for FCM push. Unset → push disabled (tokens are still stored). */
+  FCM_SERVICE_ACCOUNT: z.string().optional(),
+  FCM_ENDPOINT: z.string().url().default('https://fcm.googleapis.com'),
+  /** UTC hour at which the opt-in daily reminder push goes out (16 = 19:00 in Türkiye). */
+  PUSH_REMINDER_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(16),
   NODE_ENV: z.string().default('development'),
 });
 

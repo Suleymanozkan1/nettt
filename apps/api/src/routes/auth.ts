@@ -49,6 +49,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/auth/logout-all', { onRequest: [app.authenticate] }, async (req) => {
     await prisma.user.update({ where: { id: req.user.sub }, data: { tokenVersion: { increment: 1 } } });
+    await prisma.pushToken.deleteMany({ where: { userId: req.user.sub } }); // signed-out devices stop receiving pushes
     return { ok: true };
   });
 

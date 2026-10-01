@@ -1,13 +1,15 @@
 import { solvePow, type RunInput, type RunParams, type RunSummary, type Settings, type MissionKind } from '@stage/shared';
 import { storage } from './storage';
+import { ApiError } from './api-error';
+import { localApi } from './local-backend';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
 const TOKEN_KEY = 'stage.token';
 const DEVICE_KEY = 'stage.device';
 
-export class ApiError extends Error {
-  constructor(readonly status: number, readonly code: string, message?: string) { super(message ?? code); }
-}
+export { ApiError };
+/** Offline build (standalone APK): progression lives on the device, no server needed. */
+export const LOCAL_BACKEND = import.meta.env.VITE_BACKEND === 'local';
 
 let token: string | null = null;
 
@@ -47,12 +49,12 @@ export interface FinishResult {
 }
 export interface ShopData {
   items: { id: string; kind: 'skin' | 'character'; name: string; price: number; currency: 'credits' | 'gems'; colors: number[]; owned: boolean }[];
-  upgrades: { id: 'tolerance' | 'headstart'; name: string; description: string; level: number; maxLevel: number; nextCost: number | null }[];
+  upgrades: { id: 'tolerance' | 'encore'; name: string; description: string; level: number; maxLevel: number; nextCost: number | null }[];
 }
 export interface LeaderboardData { period: string; entries: { rank: number; name: string; score: number; character: string; me: boolean }[]; myRank: number | null; myScore: number }
 export interface DailyData { rewards: { credits: number; gems: number }[]; streak: number; canClaim: boolean; nextCycleDay: number | null; claimedToday: boolean }
 
-export const api = {
+const remoteApi = {
   async init(): Promise<void> {
     token = await storage.get(TOKEN_KEY);
     if (token) return;
@@ -75,6 +77,7 @@ export const api = {
   startRun: (body: { mode?: RunMode; startAct?: number } = {}) => request<{ runId: string; seed: number; params: RunParams; mode: RunMode; week?: string; attemptsLeft?: number }>('POST', '/runs', body),
   onboarding: (displayName: string) => request<{ displayName: string }>('POST', '/me/onboarding', { displayName }),
   logoutAll: () => request<{ ok: boolean }>('POST', '/auth/logout-all'),
+  registerPush: (pushToken: string, platform: 'android' | 'ios') => request<{ ok: boolean }>('POST', '/me/push-token', { token: pushToken, platform }),
   activeEvent: () => request<{ event: ActiveEvent | null }>('GET', '/events/active'),
   finishRun: (runId: string, inputs: RunInput[]) => request<FinishResult>('POST', `/runs/${runId}/finish`, { inputs }),
   leaderboard: (period: 'all' | 'weekly' | 'challenge') => request<LeaderboardData>('GET', `/leaderboard?period=${period}`),
@@ -88,3 +91,6 @@ export const api = {
   inventory: () => request<{ items: { id: string; kind: 'skin' | 'character'; name: string }[]; upgrades: { id: string; level: number }[]; loadout: { skin: string; character: string } }>('GET', '/inventory'),
   loadout: (l: { skin?: string; character?: string }) => request<{ skin: string; character: string }>('POST', '/loadout', l),
 };
+
+export type Api = typeof remoteApi;
+export const api: Api = LOCAL_BACKEND ? localApi : remoteApi;

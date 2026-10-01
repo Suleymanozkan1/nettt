@@ -4,6 +4,7 @@ import { App as CapApp } from '@capacitor/app';
 import { StageScene } from './game/StageScene';
 import { App } from './ui/app';
 import { parseInviteUrl } from '@stage/shared';
+import { testReminder } from './lib/reminders';
 import './styles.css';
 
 const game = new Phaser.Game({
@@ -49,5 +50,17 @@ if (Capacitor.isNativePlatform()) {
 }
 
 if (new URLSearchParams(location.search).has('debug')) {
-  (window as unknown as { __stage: unknown }).__stage = { state: () => scene()?.debugState() ?? null };
+  (window as unknown as { __stage: unknown }).__stage = {
+    state: () => scene()?.debugState() ?? null,
+    testReminder: (seconds: number) => testReminder(seconds),
+    /** Resolved safe-area insets (top, bottom, left, right) as the layout uses them. */
+    insets: () => {
+      const probe = document.body.appendChild(document.createElement('div'));
+      probe.style.cssText = 'position:absolute;visibility:hidden;padding:var(--sat) var(--sar) var(--sab) var(--sal)';
+      const cs = getComputedStyle(probe);
+      const out = [cs.paddingTop, cs.paddingBottom, cs.paddingLeft, cs.paddingRight];
+      probe.remove();
+      return out;
+    },
+  };
 }

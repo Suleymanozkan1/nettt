@@ -123,6 +123,9 @@ importers:
       '@capacitor/local-notifications':
         specifier: ^7.0.7
         version: 7.0.7(@capacitor/core@7.6.9)
+      '@capacitor/push-notifications':
+        specifier: ^7.0.7
+        version: 7.0.7(@capacitor/core@7.6.9)
       '@react-three/drei':
         specifier: ^10.7.9
         version: 10.7.9(@react-three/fiber@9.8.1(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.186.1))(@types/react@19.3.0)(@types/three@0.186.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.186.1)
@@ -238,6 +241,11 @@ packages:
 
   '@capacitor/local-notifications@7.0.7':
     resolution: {integrity: sha512-3qSpa8PpVMONHqBOaJ4RbA/lB5vOdEngtep0myGmP3S56gShPScDCotbw7dwmQy3NCdY4Up9nH3ySrGvUh2jZg==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
+
+  '@capacitor/push-notifications@7.0.7':
+    resolution: {integrity: sha512-TgFsPV4uOez0RtFKsWPz3XCrLxc9th+UyAkillUY9vL6ezVKT35te9Sn4vGR0jeU2U0KUNU7Dt6oSCALnSiEKg==}
     peerDependencies:
       '@capacitor/core': '>=7.0.0'
 
@@ -2609,6 +2617,10 @@ snapshots:
       '@capacitor/core': 7.6.9
 
   '@capacitor/local-notifications@7.0.7(@capacitor/core@7.6.9)':
+    dependencies:
+      '@capacitor/core': 7.6.9
+
+  '@capacitor/push-notifications@7.0.7(@capacitor/core@7.6.9)':
     dependencies:
       '@capacitor/core': 7.6.9
 
