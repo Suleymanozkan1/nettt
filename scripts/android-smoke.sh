@@ -88,9 +88,19 @@ echo "== offline edition: separate APK, plays with no server at all"
 adb uninstall "$PKG" >/dev/null; adb logcat -c
 ADB_TIMEOUT=180 adb install "$OFFLINE_APK"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
+# Package removal/install broadcasts make Play services clean up; give them time so they do not restart under us.
+sleep 20
 U2=$(users); R2=$(runs)
 adb shell am start -W -n "$PKG/.MainActivity" | tee "$OUT/offline-startup.txt"
-OUT="$OUT" OFFLINE=1 timeout 420 node scripts/android-webview-e2e.mjs | tee "$OUT/offline-webview-e2e.txt"
+# Retry once only if Android killed the app because a system provider it depends on (Play services fonts) died;
+# any other failure is a real failure.
+if ! OUT="$OUT" OFFLINE=1 timeout 420 node scripts/android-webview-e2e.mjs | tee "$OUT/offline-webview-e2e.txt"; then
+  adb logcat -d | grep -E "Killing [0-9]+:$PKG/.*depends on provider .* in dying proc" | tee "$OUT/offline-killed-by-system.txt"
+  [ -s "$OUT/offline-killed-by-system.txt" ] || { echo "FAIL: offline edition e2e"; exit 1; }
+  echo "app was killed by a dying system provider; relaunching once"
+  adb logcat -c; adb shell am start -W -n "$PKG/.MainActivity"
+  OUT="$OUT" OFFLINE=1 timeout 420 node scripts/android-webview-e2e.mjs | tee "$OUT/offline-webview-e2e.txt"
+fi
 [ "$(users)" -eq "$U2" ] && [ "$(runs)" -eq "$R2" ] || { echo "FAIL: offline edition contacted the server"; exit 1; }
 adb logcat -d > "$OUT/logcat-offline.txt"
 if grep -E "FATAL EXCEPTION" -A3 "$OUT/logcat-offline.txt" | grep -q "$PKG"; then echo "FAIL: crash in logcat (offline)"; exit 1; fi
