@@ -33,10 +33,11 @@ if match is not None:
     print((x1 + x2) // 2, (y1 + y2) // 2)
 PY
 }
-wait_text() { # wait_text "label" [seconds]
+wait_text() { # wait_text "label" [seconds] [quiet]
   local deadline=$((SECONDS + ${2:-60}))
   while [ $SECONDS -lt $deadline ]; do [ -n "$(find_text "$1")" ] && return 0; sleep 2; done
-  echo "FAIL: '$1' did not appear"; return 1
+  [ -n "${3:-}" ] || echo "FAIL: '$1' did not appear"
+  return 1
 }
 tap_text() { wait_text "$1" "${2:-60}"; local xy; xy=$(find_text "$1"); adb shell input tap $xy; sleep 1; }
 no_crash() { ! adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime: Process: $PKG" ; }
@@ -52,7 +53,8 @@ echo "== onboarding"
 wait_text "Understand your books" 90
 tap_text "Next"; tap_text "Next"; tap_text "Next"
 tap_text "Start"
-wait_text "Start today" 60 || wait_text "Today" 30
+# "Start today's reviews" appears once the demo book's cards exist; otherwise the Today screen title is enough.
+wait_text "Start today" 60 quiet || wait_text "Today" 30
 adb exec-out screencap -p > "$OUT/01-home.png"
 
 echo "== demo book processed in the background (release build, WorkManager)"

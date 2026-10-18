@@ -133,9 +133,12 @@ class AiPipelineTest {
         val r1 = LearningAi({ null }).generateQuiz(bookInfo, chapters, emptyList(), 3, 3, setOf(QuestionType.MULTIPLE_CHOICE), false, 1)
         // No concepts → nothing to ask about → explicit failure instead of an empty quiz.
         assertIs<AiResult.Failed>(r1)
+        val local = LearningAi({ null }).analyzeChapter(bookInfo, chapters[0], chapters[0].text, "") as AiResult.Ok
+        assertTrue(local.warnings.isEmpty(), "on-device mode is a choice, not a warning")
         val mock = MockAiProvider()
         val r2 = LearningAi({ mock }, meter = Meter(allowed = false)).analyzeChapter(bookInfo, chapters[0], chapters[0].text, "")
         assertFalse((r2 as AiResult.Ok).info.aiGenerated)
+        assertTrue(r2.warnings.single().contains("sınır"))
         assertTrue(mock.requests.isEmpty())
     }
 

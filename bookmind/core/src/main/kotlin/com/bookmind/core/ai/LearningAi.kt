@@ -49,9 +49,12 @@ class LearningAi(
         allowFallback: Boolean = true,
     ): AiResult<T> {
         val provider = try { providerSource() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
-        if (provider == null || (meter != null && !meter.allow(request.task))) {
-            val reason = if (provider == null) "Yapay zekâ sağlayıcısı yok; yerel yöntem kullanıldı." else "Günlük yapay zekâ kullanım sınırına ulaşıldı; yerel yöntem kullanıldı."
-            return localOrFail(fallback, request.promptVersion, reason, if (provider == null) AiException.NotConfigured() else AiException.QuotaExceeded(null))
+        if (provider == null) {
+            // On-device mode is the user's choice, not a problem: the origin badge says "local", no warning needed.
+            return localOrFail(fallback, request.promptVersion, null, AiException.NotConfigured())
+        }
+        if (meter != null && !meter.allow(request.task)) {
+            return localOrFail(fallback, request.promptVersion, "Günlük yapay zekâ kullanım sınırına ulaşıldı; yerel yöntem kullanıldı.", AiException.QuotaExceeded(null))
         }
 
         val inputHash = Checksums.sha256(request.system + "\u0000" + request.user)
@@ -94,8 +97,8 @@ class LearningAi(
         else AiResult.Failed(lastError)
     }
 
-    private fun <T> localOrFail(fallback: (() -> T)?, promptVersion: String, warning: String, error: AiException): AiResult<T> =
-        if (fallback == null) AiResult.Failed(error) else AiResult.Ok(fallback(), localInfo(promptVersion), listOf(warning))
+    private fun <T> localOrFail(fallback: (() -> T)?, promptVersion: String, warning: String?, error: AiException): AiResult<T> =
+        if (fallback == null) AiResult.Failed(error) else AiResult.Ok(fallback(), localInfo(promptVersion), listOfNotNull(warning))
 
     // ----- Payload helpers for the mock provider -----
 
