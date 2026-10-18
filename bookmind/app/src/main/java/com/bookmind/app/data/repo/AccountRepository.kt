@@ -88,6 +88,8 @@ class AccountRepository @Inject constructor(
         auth.signOut()
         withContext(Dispatchers.IO) {
             db.clearAllTables()
+            // Triggers fire while tables are cleared; nothing from the deleted data may be uploaded later.
+            db.openHelper.writableDatabase.execSQL("DELETE FROM sync_outbox")
             files.deleteAll()
         }
         settings.clear()

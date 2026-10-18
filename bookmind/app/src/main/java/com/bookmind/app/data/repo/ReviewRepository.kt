@@ -49,7 +49,7 @@ fun DueItem.question(): QuestionDraft? = questionJson?.let { runCatching { AppJs
 
 /** Tracks study sessions so the daily goal measures actual study time. */
 @Singleton
-class SessionTracker @Inject constructor(private val db: BookMindDatabase, private val users: UserRepository, private val clock: AppClock, private val sync: SyncRecorder) {
+class SessionTracker @Inject constructor(private val db: BookMindDatabase, private val users: UserRepository, private val clock: AppClock) {
     suspend fun start(type: SessionType, bookId: String?, metadata: String? = null): String {
         val s = StudySessionEntity(newId(), users.userId(), bookId, type, clock.now(), null, metadata)
         db.sessions().insert(s)
@@ -65,7 +65,6 @@ class SessionTracker @Inject constructor(private val db: BookMindDatabase, priva
         val s = db.sessions().get(id) ?: return
         if (s.completedAt != null) return
         db.sessions().upsert(s.copy(completedAt = clock.now()))
-        sync.upsert("study_sessions", id)
     }
 }
 
@@ -76,7 +75,6 @@ class ReviewRepository @Inject constructor(
     private val db: BookMindDatabase,
     private val users: UserRepository,
     private val settings: SettingsRepository,
-    private val sync: SyncRecorder,
     private val clock: AppClock,
 ) {
     suspend fun scheduler(): SpacedRepetitionScheduler {
@@ -152,8 +150,6 @@ class ReviewRepository @Inject constructor(
                 ),
             )
             db.xp().insert(XpEventEntity(newId(), userId, Gamification.Kind.REVIEW.name, xp, now, item.itemId))
-            existing?.let { sync.upsert("review_states", it.id) }
-            sync.upsert("review_logs", logId)
         }
         return Outcome(rating, result.scheduledIntervalMs, xp)
     }
@@ -190,13 +186,11 @@ class ReviewRepository @Inject constructor(
                     reviewCount = 0, lapseCount = 0, algorithmVersion = "", updatedAt = now),
             )
         }
-        sync.upsert("learning_items", item.id)
         return item.id
     }
 
     suspend fun suspend(itemId: String, suspended: Boolean) {
         db.learning().setSuspended(itemId, suspended, clock.now())
-        sync.upsert("learning_items", itemId)
     }
 
     suspend fun itemsForBook(bookId: String): List<DueItem> = db.learning().forBook(users.userId(), bookId)

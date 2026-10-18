@@ -49,7 +49,6 @@ class StudyRepository @Inject constructor(
     private val sessions: SessionTracker,
     private val reviews: ReviewRepository,
     private val settings: SettingsRepository,
-    private val sync: SyncRecorder,
     private val clock: AppClock,
 ) {
     fun bookInfo(book: BookEntity) = LearningAi.Book(
@@ -94,7 +93,6 @@ class StudyRepository @Inject constructor(
             modelMetadata = info.toJson(), warnings = warnings.toJsonList().takeIf { warnings.isNotEmpty() }, createdAt = now, updatedAt = now,
         )
         db.summaries().upsert(entity)
-        sync.upsert("summaries", entity.id)
         return entity
     }
 
@@ -110,7 +108,6 @@ class StudyRepository @Inject constructor(
 
     suspend fun editSummary(id: String, text: String?) {
         db.summaries().setUserText(id, text?.takeIf { it.isNotBlank() }, clock.now())
-        sync.upsert("summaries", id)
     }
 
     // ---------- Concepts ----------
@@ -120,12 +117,10 @@ class StudyRepository @Inject constructor(
 
     suspend fun toggleFavorite(concept: ConceptEntity) {
         db.concepts().setFavorite(concept.id, !concept.isFavorite, clock.now())
-        sync.upsert("concepts", concept.id)
     }
 
     suspend fun editConcept(concept: ConceptEntity, title: String, explanation: String) {
         db.concepts().upsert(concept.copy(title = title.trim(), explanation = explanation.trim(), userEdited = true, updatedAt = clock.now()))
-        sync.upsert("concepts", concept.id)
     }
 
     // ---------- Tutor ----------

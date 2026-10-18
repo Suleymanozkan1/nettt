@@ -2,7 +2,6 @@ package com.bookmind.app.data.repo
 
 import com.bookmind.app.data.db.BookMindDatabase
 import com.bookmind.app.data.db.NotificationPreferenceEntity
-import com.bookmind.app.data.db.SyncOutboxEntity
 import com.bookmind.app.data.db.UserEntity
 import com.bookmind.app.util.AppClock
 import com.bookmind.app.util.newId
@@ -47,7 +46,6 @@ class UserRepository @Inject constructor(private val db: BookMindDatabase, priva
         val current = db.users().current() ?: createDefault()
         val next = transform(current).copy(updatedAt = clock.now())
         db.users().upsert(next)
-        db.sync().enqueue(SyncOutboxEntity(entity = "users", entityId = next.id, op = "UPSERT", createdAt = clock.now()))
     }
 
     /** Keeps the stored time zone in step with the device so reminders follow the user when travelling. */
@@ -55,11 +53,4 @@ class UserRepository @Inject constructor(private val db: BookMindDatabase, priva
         val zone = clock.zone().id
         if (db.users().current()?.timezone != zone) update { it.copy(timezone = zone) }
     }
-}
-
-/** Records changes for the sync outbox. Cheap no-op rows when the user never signs in (pruned on sign-out). */
-@Singleton
-class SyncRecorder @Inject constructor(private val db: BookMindDatabase, private val clock: AppClock) {
-    suspend fun upsert(entity: String, id: String) = db.sync().enqueue(SyncOutboxEntity(entity = entity, entityId = id, op = "UPSERT", createdAt = clock.now()))
-    suspend fun delete(entity: String, id: String) = db.sync().enqueue(SyncOutboxEntity(entity = entity, entityId = id, op = "DELETE", createdAt = clock.now()))
 }

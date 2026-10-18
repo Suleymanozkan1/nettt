@@ -25,6 +25,9 @@ object AppModule {
     fun database(@ApplicationContext context: Context): BookMindDatabase =
         Room.databaseBuilder(context, BookMindDatabase::class.java, BookMindDatabase.NAME)
             // Schema changes ship with migrations (see BookMindDatabase.autoMigrations); never wipe user data.
+            .addCallback(object : androidx.room.RoomDatabase.Callback() {
+                override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) = com.bookmind.app.sync.SyncTriggers.install(db)
+            })
             .build()
 
     @Provides @Singleton fun okHttp(): OkHttpClient = OkHttpClient.Builder().retryOnConnectionFailure(true).build()

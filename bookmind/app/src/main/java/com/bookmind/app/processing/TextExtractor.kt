@@ -1,7 +1,7 @@
 package com.bookmind.app.processing
 
 import android.content.Context
-import android.graphics.Bitmap
+import androidx.core.graphics.createBitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
@@ -103,7 +103,7 @@ class TextExtractor @Inject constructor(@ApplicationContext private val context:
                         coroutineContext.ensureActive()
                         renderer.openPage(i).use { page ->
                             val scale = 1600f / page.width
-                            val bmp = Bitmap.createBitmap((page.width * scale).toInt(), (page.height * scale).toInt(), Bitmap.Config.ARGB_8888)
+                            val bmp = createBitmap((page.width * scale).toInt(), (page.height * scale).toInt())
                             bmp.eraseColor(Color.WHITE)
                             page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                             pages += suspendCancellableCoroutine<String> { cont ->

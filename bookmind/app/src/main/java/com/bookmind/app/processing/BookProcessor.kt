@@ -11,7 +11,6 @@ import com.bookmind.app.data.db.ProcessingStatus
 import com.bookmind.app.data.db.ReviewStateEntity
 import com.bookmind.app.data.files.BookFileStore
 import com.bookmind.app.data.files.ImportException
-import com.bookmind.app.data.repo.SyncRecorder
 import com.bookmind.app.data.repo.UserRepository
 import com.bookmind.app.util.AppClock
 import com.bookmind.app.util.AppJson
@@ -49,7 +48,6 @@ class BookProcessor @Inject constructor(
     private val extractor: TextExtractor,
     private val ai: LearningAi,
     private val users: UserRepository,
-    private val sync: SyncRecorder,
     private val clock: AppClock,
 ) {
     companion object {
@@ -137,7 +135,6 @@ class BookProcessor @Inject constructor(
                 ),
             )
         }
-        sync.upsert("books", book.id)
         return entities
     }
 
@@ -181,7 +178,6 @@ class BookProcessor @Inject constructor(
         }
         val status = if (failures == 0) ProcessingStatus.READY else ProcessingStatus.PARTIAL
         db.books().setStatus(book.id, status, 100, if (failures > 0) "$failures bölüm analiz edilemedi" else book.processingMessage, clock.now())
-        sync.upsert("books", book.id)
     }
 
     private suspend fun analyzeChapter(book: BookEntity, info: LearningAi.Book, chapter: ChapterEntity, input: LocalHeuristicEngine.ChapterInput, userId: String) {

@@ -74,6 +74,7 @@ class SettingsViewModel @Inject constructor(
     private val users: UserRepository,
     private val account: AccountRepository,
     private val scheduler: WorkScheduler,
+    private val syncEngine: com.bookmind.app.sync.SyncEngine,
     db: BookMindDatabase,
     clock: AppClock,
 ) : ViewModel() {
@@ -92,7 +93,12 @@ class SettingsViewModel @Inject constructor(
         _message.value = runCatching {
             if (create) { if (auth.signUp(email, password)) null else "confirm" } else { auth.signIn(email, password); null }
         }.fold({ it }, { "error:" + (it.message ?: "") })
-        if (auth.account.value != null) { scheduler.schedulePeriodicSync(); scheduler.syncNow() }
+        if (auth.account.value != null) {
+            // First sync after sign-in uploads this device's whole library, then keeps it in step.
+            syncEngine.enqueueSnapshot()
+            scheduler.schedulePeriodicSync()
+            scheduler.syncNow()
+        }
     }
     fun signOut() = viewModelScope.launch { auth.signOut(); scheduler.cancelSync() }
     fun syncNow() = scheduler.syncNow()

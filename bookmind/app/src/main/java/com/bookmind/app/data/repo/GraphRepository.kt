@@ -21,7 +21,6 @@ class GraphRepository @Inject constructor(
     private val db: BookMindDatabase,
     private val ai: LearningAi,
     private val users: UserRepository,
-    private val sync: SyncRecorder,
     private val clock: AppClock,
 ) {
     fun links(): Flow<List<LinkRow>> = flow { emit(users.userId()) }.flatMapLatest { db.graph().observe(it) }
@@ -49,7 +48,6 @@ class GraphRepository @Inject constructor(
                 }.distinctBy { Triple(it.fromConceptId, it.toConceptId, it.relation) }
                 db.graph().clearGenerated(userId)
                 db.graph().upsert(entities)
-                entities.forEach { sync.upsert("concept_links", it.id) }
                 Result(entities.size, r.warnings, r.info.aiGenerated)
             }
         }

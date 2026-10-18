@@ -79,6 +79,8 @@ class QuizSessionViewModel @Inject constructor(handle: SavedStateHandle, private
         val grading: Boolean = false,
         val timeLimitSeconds: Int? = null,
         val loading: Boolean = true,
+        /** Set when the attempt is finished; the screen then navigates to the results. */
+        val finishedAttemptId: String? = null,
     )
 
     private val _state = MutableStateFlow(State())
@@ -105,19 +107,18 @@ class QuizSessionViewModel @Inject constructor(handle: SavedStateHandle, private
         _state.value = _state.value.copy(graded = graded, grading = false)
     }
 
-    /** @return the attempt id when the quiz is over. */
-    suspend fun next(): String? {
+    fun next() {
         val s = _state.value
-        if (s.index + 1 >= s.items.size) return finish()
+        if (s.index + 1 >= s.items.size) { finish(); return }
         _state.value = s.copy(index = s.index + 1, graded = null)
         shownAt = System.currentTimeMillis()
-        return null
     }
 
-    suspend fun finish(): String? {
-        val a = attempt ?: return null
+    fun finish() = viewModelScope.launch {
+        val a = attempt ?: return@launch
+        if (_state.value.finishedAttemptId != null) return@launch
         quizzes.finish(a)
-        return a.attemptId
+        _state.value = _state.value.copy(finishedAttemptId = a.attemptId)
     }
 }
 
@@ -126,14 +127,14 @@ fun QuizSessionScreen(quizId: String, onBack: () -> Unit, onFinished: (String) -
     val state by vm.state.collectAsStateWithLifecycle()
     var confirmExit by remember { mutableStateOf(false) }
     var remaining by remember { mutableLongStateOf(-1L) }
-    var finishing by remember { mutableStateOf(false) }
+    LaunchedEffect(state.finishedAttemptId) { state.finishedAttemptId?.let(onFinished) }
 
     LaunchedEffect(state.timeLimitSeconds, state.loading) {
         val limit = state.timeLimitSeconds ?: return@LaunchedEffect
         if (state.loading) return@LaunchedEffect
         remaining = limit.toLong()
         while (remaining > 0) { delay(1_000); remaining-- }
-        if (!finishing) { finishing = true; vm.finish()?.let(onFinished) }
+        vm.finish()
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
@@ -153,8 +154,7 @@ fun QuizSessionScreen(quizId: String, onBack: () -> Unit, onFinished: (String) -
             AnswerInput(item.draft, enabled = graded == null && !state.grading, onSubmit = vm::submit)
             if (graded != null) {
                 Feedback(graded, item)
-                val scope = androidx.compose.runtime.rememberCoroutineScope()
-                Button({ scope.launch { vm.next()?.let(onFinished) } }, Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Button(vm::next, Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Text(stringResource(if (state.index + 1 >= state.items.size) R.string.see_results else R.string.next))
                 }
             }

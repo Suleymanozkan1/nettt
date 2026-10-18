@@ -61,7 +61,7 @@ fun BackTopBar(title: String, onBack: (() -> Unit)?, actions: @Composable () -> 
 }
 
 @Composable
-fun LoadingState(message: String? = null, modifier: Modifier = Modifier) {
+fun LoadingState(modifier: Modifier = Modifier, message: String? = null) {
     Column(modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator()
         if (message != null) { Spacer(Modifier.height(16.dp)); Text(message, textAlign = TextAlign.Center) }
@@ -69,7 +69,7 @@ fun LoadingState(message: String? = null, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun EmptyState(title: String, body: String, actionLabel: String? = null, onAction: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+fun EmptyState(title: String, body: String, modifier: Modifier = Modifier, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
     Column(modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Filled.MenuBook, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(12.dp))
@@ -81,7 +81,7 @@ fun EmptyState(title: String, body: String, actionLabel: String? = null, onActio
 }
 
 @Composable
-fun ErrorState(message: String, onRetry: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+fun ErrorState(message: String, modifier: Modifier = Modifier, onRetry: (() -> Unit)? = null) {
     Column(modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Filled.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(40.dp))
         Spacer(Modifier.height(8.dp))

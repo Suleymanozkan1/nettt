@@ -38,6 +38,8 @@ data class AppSettings(
     val teachingLevel: String = "BASIC",
     val summaryLength: String = "MEDIUM",
     val lastSyncAt: Long = 0,
+    /** Per-table pull cursors (server timestamps, ISO-8601) as a JSON object. */
+    val syncCursors: String = "{}",
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("settings")
@@ -59,6 +61,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         val teachingLevel = stringPreferencesKey("teaching_level")
         val summaryLength = stringPreferencesKey("summary_length")
         val lastSync = longPreferencesKey("last_sync_at")
+        val cursors = stringPreferencesKey("sync_cursors")
     }
 
     val settings: Flow<AppSettings> = store.data.map { p ->
@@ -75,6 +78,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
             teachingLevel = p[Keys.teachingLevel] ?: "BASIC",
             summaryLength = p[Keys.summaryLength] ?: "MEDIUM",
             lastSyncAt = p[Keys.lastSync] ?: 0,
+            syncCursors = p[Keys.cursors] ?: "{}",
         )
     }
 
@@ -96,6 +100,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
                     p[Keys.teachingLevel] ?: "BASIC",
                     p[Keys.summaryLength] ?: "MEDIUM",
                     p[Keys.lastSync] ?: 0,
+                    p[Keys.cursors] ?: "{}",
                 ),
             )
             p[Keys.onboarding] = s.onboardingDone
@@ -110,6 +115,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
             p[Keys.teachingLevel] = s.teachingLevel
             p[Keys.summaryLength] = s.summaryLength
             p[Keys.lastSync] = s.lastSyncAt
+            p[Keys.cursors] = s.syncCursors
         }
     }
 

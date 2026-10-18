@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Release-APK smoke test on an Android emulator (run in CI by reactivecircus/android-emulator-runner).
+# Drives the real UI through the accessibility tree: onboarding -> demo book is processed in the background
+# (WorkManager + Hilt worker, R8-minified) -> library -> quick summary. Fails on any crash in logcat.
+set -euo pipefail
+APK=${APK:-app-release.apk}
+PKG=com.bookmind.app
+OUT=${OUT:-test-results/bookmind-android}
+mkdir -p "$OUT"
+ADB_BIN=$(type -P adb)
+adb() { timeout "${ADB_TIMEOUT:-60}" "$ADB_BIN" "$@"; }
+trap 'rc=$?; adb logcat -d > "$OUT/logcat.txt" 2>/dev/null || true; adb exec-out screencap -p > "$OUT/last.png" 2>/dev/null || true; exit $rc' EXIT
+
+dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true; adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null 2>&1 || true; }
+# Prints "x y" of the first node whose text or content-desc contains $1 (case-sensitive), or nothing.
+find_text() {
+  dump
+  python3 - "$OUT/ui.xml" "$1" <<'PY'
+import re, sys, xml.etree.ElementTree as ET
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+except Exception:
+    sys.exit(0)
+for n in root.iter("node"):
+    if sys.argv[2] in (n.get("text") or "") or sys.argv[2] in (n.get("content-desc") or ""):
+        x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+        print((x1 + x2) // 2, (y1 + y2) // 2)
+        break
+PY
+}
+wait_text() { # wait_text "label" [seconds]
+  local deadline=$((SECONDS + ${2:-60}))
+  while [ $SECONDS -lt $deadline ]; do [ -n "$(find_text "$1")" ] && return 0; sleep 2; done
+  echo "FAIL: '$1' did not appear"; return 1
+}
+tap_text() { wait_text "$1" "${2:-60}"; local xy; xy=$(find_text "$1"); adb shell input tap $xy; sleep 1; }
+no_crash() { ! adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime: Process: $PKG" ; }
+
+for i in $(seq 1 60); do [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break; sleep 2; done
+adb shell settings put system system_locales en-US >/dev/null 2>&1 || true
+echo "== install"; ADB_TIMEOUT=240 adb install -r "$APK"
+adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
+adb logcat -c
+echo "== cold start"; adb shell am start -W -n "$PKG/.MainActivity" | tee "$OUT/startup.txt"
+
+echo "== onboarding"
+wait_text "Understand your books" 90
+tap_text "Next"; tap_text "Next"; tap_text "Next"
+tap_text "Start"
+wait_text "Start today" 60 || wait_text "Today" 30
+adb exec-out screencap -p > "$OUT/01-home.png"
+
+echo "== demo book processed in the background (release build, WorkManager)"
+tap_text "Library"
+wait_text "Öğrenmenin Bilimi" 60
+deadline=$((SECONDS + 180))
+while [ $SECONDS -lt $deadline ]; do
+  dump
+  if ! grep -qE 'text="(Queued|Extracting text|Analysing)"' "$OUT/ui.xml"; then break; fi
+  sleep 5
+done
+grep -qE 'text="(Failed|OCR needed)"' "$OUT/ui.xml" && { echo "FAIL: processing failed"; exit 1; }
+adb exec-out screencap -p > "$OUT/02-library.png"
+
+echo "== book detail and on-device quick summary"
+tap_text "Öğrenmenin Bilimi"
+wait_text "Unutma Eğrisi" 60
+tap_text "Quick summary"
+tap_text "Generate"
+wait_text "Temel fikir" 90
+adb exec-out screencap -p > "$OUT/03-summary.png"
+
+echo "== crash check"
+no_crash
+adb shell pidof "$PKG" >/dev/null
+echo "BookMind release smoke test passed"

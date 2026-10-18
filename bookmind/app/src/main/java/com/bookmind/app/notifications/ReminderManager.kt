@@ -2,7 +2,6 @@ package com.bookmind.app.notifications
 
 import com.bookmind.app.data.db.BookMindDatabase
 import com.bookmind.app.data.db.NotificationPreferenceEntity
-import com.bookmind.app.data.repo.SyncRecorder
 import com.bookmind.app.data.repo.UserRepository
 import com.bookmind.app.util.AppClock
 import com.bookmind.app.work.WorkScheduler
@@ -47,7 +46,6 @@ class ReminderManager @Inject constructor(
     private val users: UserRepository,
     private val scheduler: WorkScheduler,
     private val clock: AppClock,
-    private val sync: SyncRecorder,
 ) {
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val prefs: Flow<ReminderPrefs?> = flow { emit(users.userId()) }.flatMapLatest { id ->
@@ -72,7 +70,6 @@ class ReminderManager @Inject constructor(
             updatedAt = clock.now(),
         )
         db.notificationPrefs().upsert(entity)
-        sync.upsert("notification_preferences", entity.id)
         reschedule()
     }
 

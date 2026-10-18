@@ -34,7 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +45,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.asStateFlow
 import com.bookmind.app.R
 import com.bookmind.app.data.repo.LibraryRepository
 import com.bookmind.app.data.repo.UserRepository
@@ -65,7 +68,21 @@ class OnboardingViewModel @Inject constructor(
     private val reminders: ReminderManager,
     private val library: LibraryRepository,
 ) : ViewModel() {
-    suspend fun finish(goalMinutes: Int, remindersOn: Boolean, hour: Int, addDemo: Boolean) {
+    private val _done = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val done = _done.asStateFlow()
+    private val _busy = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val busy = _busy.asStateFlow()
+
+    fun finish(goalMinutes: Int, remindersOn: Boolean, hour: Int, addDemo: Boolean) {
+        if (_busy.value) return
+        _busy.value = true
+        viewModelScope.launch {
+            save(goalMinutes, remindersOn, hour, addDemo)
+            _done.value = true
+        }
+    }
+
+    private suspend fun save(goalMinutes: Int, remindersOn: Boolean, hour: Int, addDemo: Boolean) {
         users.update { it.copy(dailyGoalMinutes = goalMinutes) }
         reminders.save(
             ReminderPrefs(remindersOn, LocalTime.of(hour, 0), DayOfWeek.entries.toSet(),
@@ -83,9 +100,11 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
     var remindersOn by remember { mutableStateOf(true) }
     var hour by remember { mutableIntStateOf(19) }
     var addDemo by remember { mutableStateOf(true) }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val finish = { scope.launch { busy = true; vm.finish(goal, remindersOn, hour, addDemo); onDone() }; Unit }
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    val done by vm.done.collectAsStateWithLifecycle()
+    // Navigation happens on the main thread once the view model has saved everything.
+    LaunchedEffect(done) { if (done) onDone() }
+    val finish = { vm.finish(goal, remindersOn, hour, addDemo) }
     // Ask for notification permission at the moment it is needed; the app works the same if it is denied.
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) remindersOn = false

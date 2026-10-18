@@ -136,7 +136,7 @@ fun SummaryScreen(bookId: String, type: String, chapterId: String?, onBack: () -
             }
             error?.let { ErrorState(it, onRetry = vm::generate) }
             when {
-                busy -> LoadingState(stringResource(R.string.generating))
+                busy -> LoadingState(message = stringResource(R.string.generating))
                 summary == null -> Column(Modifier.padding(vertical = 24.dp)) {
                     Text(stringResource(R.string.summary_not_generated))
                     Spacer(Modifier.height(12.dp))

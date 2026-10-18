@@ -34,7 +34,6 @@ class LibraryRepository @Inject constructor(
     private val files: BookFileStore,
     private val users: UserRepository,
     private val scheduler: WorkScheduler,
-    private val sync: SyncRecorder,
     private val clock: AppClock,
 ) {
     fun books(query: String = ""): Flow<List<BookEntity>> = flow { emit(users.userId()) }.flatMapLatest { uid ->
@@ -94,8 +93,6 @@ class LibraryRepository @Inject constructor(
             )
             db.sources().insert(BookSourceEntity(newId(), bookId, imported.relativePath, imported.checksum, imported.size, imported.originalName, null, 0, now))
         }
-        sync.upsert("books", bookId)
-        db.sources().forBook(bookId)?.let { sync.upsert("book_sources", it.id) }
         db.sync().enqueue(com.bookmind.app.data.db.SyncOutboxEntity(entity = "file", entityId = bookId, op = "UPLOAD", createdAt = now))
         scheduler.processBook(bookId)
         return bookId
@@ -111,13 +108,11 @@ class LibraryRepository @Inject constructor(
     suspend fun updateMetadata(bookId: String, title: String, author: String?) {
         val book = db.books().get(bookId) ?: return
         db.books().upsert(book.copy(title = title.trim().ifBlank { book.title }, author = author?.trim()?.ifBlank { null }, updatedAt = clock.now()))
-        sync.upsert("books", bookId)
     }
 
     suspend fun markCompleted(bookId: String, completed: Boolean) {
         val book = db.books().get(bookId) ?: return
         db.books().upsert(book.copy(completedAt = if (completed) clock.now() else null, updatedAt = clock.now()))
-        sync.upsert("books", bookId)
     }
 
     /**
@@ -137,6 +132,5 @@ class LibraryRepository @Inject constructor(
             db.books().upsert(book.copy(deletedAt = now, updatedAt = now, processingStatus = ProcessingStatus.READY))
         }
         withContext(Dispatchers.IO) { files.deleteBook(bookId) }
-        sync.upsert("books", bookId)
     }
 }

@@ -1,0 +1,95 @@
+name: BookMind AI
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['bookmind/**', '.github/workflows/bookmind.yml']
+  pull_request:
+    paths: ['bookmind/**', '.github/workflows/bookmind.yml']
+
+defaults:
+  run:
+    working-directory: bookmind
+
+jobs:
+  android:
+    name: Gradle tests, lint, debug + release builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Core unit tests (FSRS, parsers, AI pipeline, planner, sync client)
+        run: ./gradlew :core:test --no-daemon
+      - name: App tests (Room + migrations, pipeline, repositories, sync, Compose UI on Robolectric)
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+      - name: Lint
+        run: ./gradlew :app:lintDebug --no-daemon
+      - name: Debug and minified release builds
+        run: ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bookmind-reports
+          path: |
+            bookmind/core/build/reports/tests
+            bookmind/app/build/reports
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bookmind-apks
+          path: |
+            bookmind/app/build/outputs/apk/debug/app-debug.apk
+            bookmind/app/build/outputs/apk/release/app-release.apk
+
+  supabase:
+    name: Supabase schema, RLS and Edge Functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: SQL migrations + row level security tests (PostgreSQL 16)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-16 >/dev/null
+          PG_BIN=/usr/lib/postgresql/16/bin bash scripts/test-supabase-sql.sh
+      - name: Generated schema is up to date with the Room schema
+        run: |
+          python3 scripts/gen_supabase_schema.py app/schemas/com.bookmind.app.data.db.BookMindDatabase/2.json > /tmp/synced.sql
+          diff -u supabase/migrations/20261018000002_synced_tables.sql /tmp/synced.sql
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+      - name: Edge Functions type-check and tests
+        working-directory: bookmind/supabase/functions
+        run: |
+          deno check ai/index.ts delete-account/index.ts
+          deno test --allow-env tests/
+
+  device:
+    name: Release APK on an Android emulator
+    runs-on: ubuntu-latest
+    needs: android
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: bookmind-apks, path: bookmind/apks }
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          # Pinned for the same reason as the game's emulator job (latest package fails to download).
+          emulator-build: 15917651
+          target: google_apis
+          disable-animations: true
+          emulator-boot-timeout: 900
+          working-directory: bookmind
+          script: APK=apks/release/app-release.apk timeout 1200 bash scripts/android-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: bookmind-emulator, path: bookmind/test-results, if-no-files-found: ignore }

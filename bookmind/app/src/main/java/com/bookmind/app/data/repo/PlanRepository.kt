@@ -20,7 +20,6 @@ import javax.inject.Singleton
 class PlanRepository @Inject constructor(
     private val db: BookMindDatabase,
     private val users: UserRepository,
-    private val sync: SyncRecorder,
     private val clock: AppClock,
 ) {
     fun plan(bookId: String): Flow<StudyPlanEntity?> = db.plans().observeForBook(bookId)
@@ -45,7 +44,6 @@ class PlanRepository @Inject constructor(
         val plan = StudyPlanEntity(existing?.id ?: newId(), userId, bookId, dailyMinutes, clock.today().toEpochDay(), existing?.createdAt ?: now, now)
         db.plans().upsertPlan(plan)
         db.plans().replaceTasks(plan.id, StudyPlanner.build(infos, dailyMinutes, clock.today()).map { it.toEntity(plan.id) })
-        sync.upsert("study_plans", plan.id)
     }
 
     /** Called when the plan is shown: moves missed tasks forward and adds reviews for weak chapters. */

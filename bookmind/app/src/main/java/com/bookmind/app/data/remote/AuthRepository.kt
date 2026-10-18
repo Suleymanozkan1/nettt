@@ -14,12 +14,14 @@ import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class BackendConfig(val url: String, val anonKey: String) {
-    val isConfigured: Boolean get() = url.startsWith("https://") && anonKey.isNotBlank()
+data class BackendConfig(val url: String, val anonKey: String, val allowLocalHttp: Boolean = false) {
+    /** HTTPS only; plain HTTP is accepted for a local Supabase (emulator host/localhost) in debug builds and tests. */
+    val isConfigured: Boolean
+        get() = anonKey.isNotBlank() && (url.startsWith("https://") || (allowLocalHttp && Regex("^http://(localhost|127\\.0\\.0\\.1|10\\.0\\.2\\.2)(:\\d+)?(/.*)?$").matches(url)))
     val aiEndpoint: String get() = url.trimEnd('/') + "/functions/v1/ai"
 
     companion object {
-        fun fromBuildConfig() = BackendConfig(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY)
+        fun fromBuildConfig() = BackendConfig(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY, allowLocalHttp = BuildConfig.DEBUG)
     }
 }
 

@@ -1,0 +1,32 @@
+# Supabase CLI configuration for local development (`supabase start`) and deployment.
+project_id = "bookmind"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 16
+
+[auth]
+enabled = true
+site_url = "https://bookmind.invalid"
+enable_signup = true
+minimum_password_length = 8
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+[storage]
+enabled = true
+file_size_limit = "150MiB"
+
+[functions.ai]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true

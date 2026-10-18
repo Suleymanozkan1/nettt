@@ -90,7 +90,7 @@ fun LibraryScreen(onOpenBook: (String) -> Unit, onAddBook: () -> Unit, onOpenNot
             val list = books
             when {
                 list == null -> Unit
-                list.isEmpty() && query.isBlank() -> EmptyState(stringResource(R.string.library_empty_title), stringResource(R.string.library_empty_body), stringResource(R.string.add_book), onAddBook)
+                list.isEmpty() && query.isBlank() -> EmptyState(stringResource(R.string.library_empty_title), stringResource(R.string.library_empty_body), actionLabel = stringResource(R.string.add_book), onAction = onAddBook)
                 list.isEmpty() -> EmptyState(stringResource(R.string.no_results), stringResource(R.string.no_results_body))
                 else -> LazyColumn(Modifier.fillMaxSize()) { items(list, key = { it.id }) { BookRow(it) { onOpenBook(it.id) } } }
             }

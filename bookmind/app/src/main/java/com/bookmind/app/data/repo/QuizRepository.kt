@@ -62,7 +62,6 @@ class QuizRepository @Inject constructor(
     private val users: UserRepository,
     private val ai: LearningAi,
     private val files: BookFileStore,
-    private val sync: SyncRecorder,
     private val clock: AppClock,
 ) {
     data class Created(val quizId: String, val warnings: List<String>, val aiGenerated: Boolean)
@@ -119,8 +118,6 @@ class QuizRepository @Inject constructor(
             db.quizzes().insertQuiz(quiz)
             db.quizzes().insertQuestions(rows)
         }
-        sync.upsert("quizzes", quiz.id)
-        rows.forEach { sync.upsert("quiz_questions", it.id) }
         return Created(quiz.id, warnings, aiGenerated)
     }
 
@@ -168,7 +165,6 @@ class QuizRepository @Inject constructor(
         val answer = QuizAnswerEntity(newId(), attemptId, question.id, userAnswer.take(4_000), graded.score, graded.correct, graded.feedback,
             graded.confidence, if (QuizScorer.isObjective(q)) "rules" else "evaluator", responseTimeMs, clock.now())
         db.quizzes().upsertAnswer(answer)
-        sync.upsert("quiz_answers", answer.id)
 
         // Retrieval practice counts: linked concept cards are rescheduled with this evidence.
         question.learningItemId?.let { itemId ->
@@ -200,7 +196,6 @@ class QuizRepository @Inject constructor(
         db.quizzes().upsertAttempt(a.copy(completedAt = clock.now(), score = score,
             resultMetadata = """{"answered":${answers.size},"total":$total,"correct":${answers.count { it.correct }}}"""))
         sessions.finish(attempt.sessionId)
-        sync.upsert("quiz_attempts", a.id)
         return score
     }
 

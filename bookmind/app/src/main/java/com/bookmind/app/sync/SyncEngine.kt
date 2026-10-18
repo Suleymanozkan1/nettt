@@ -20,7 +20,11 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 import java.io.File
+import com.bookmind.app.util.AppJson
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import java.time.Instant
+import java.time.OffsetDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -64,7 +68,7 @@ class SyncEngine @Inject constructor(
         Table("notification_preferences", true, true),
         Table("xp_events", false, true),
         Table("study_plans", true, true),
-        Table("plan_tasks", false, false),
+        Table("plan_tasks", true, false),
         Table("concept_links", false, true),
     )
     private val byName = tables.associateBy { it.name }
@@ -172,8 +176,8 @@ class SyncEngine @Inject constructor(
             for (e in batch.filter { it.op == "UPLOAD" }) {
                 try { uploadSource(rest, token, e.entityId); done += e.id } catch (ex: Exception) { db.sync().fail(e.id, ex.message ?: "error"); failed++ }
             }
-            // "users" changes go to the profile row.
-            for (e in batch.filter { it.entity == "users" }) {
+            // "users" changes go to the profile row (one upsert per batch is enough).
+            for (e in batch.filter { it.entity == "users" }.distinctBy { it.entityId }.take(1)) {
                 runCatching {
                     db.users().current()?.let { u ->
                         rest.upsert("profiles", listOf(JsonObject(mapOf("language" to JsonPrimitive(u.language), "timezone" to JsonPrimitive(u.timezone), "daily_goal_minutes" to JsonPrimitive(u.dailyGoalMinutes)))), token)
@@ -182,6 +186,7 @@ class SyncEngine @Inject constructor(
             }
             // Entries for unknown entities are dropped so they never block the queue.
             done += batch.filter { it.entity !in byName && it.entity != "users" && it.op != "UPLOAD" }.map { it.id }
+            done += batch.filter { it.entity == "users" }.map { it.id }
             db.sync().remove(done)
             if (done.isEmpty()) break // everything in this batch failed; retry on the next run
             // Give up on poison entries after many attempts so the rest can flow.
@@ -198,24 +203,53 @@ class SyncEngine @Inject constructor(
     }
 
     private suspend fun pull(rest: SupabaseRest, token: String): Int {
-        val since = settings.current().lastSyncAt
-        val sinceIso = Instant.ofEpochMilli(since).toString()
-        val started = clock.now()
+        // Cursors are server timestamps, never the device clock, so clock skew cannot hide rows.
+        val cursors = runCatching { AppJson.decodeFromString(MapSerializer(String.serializer(), String.serializer()), settings.current().syncCursors) }
+            .getOrDefault(emptyMap()).toMutableMap()
         val localUser = users.userId()
         var count = 0
         for (table in tables) {
+            val since = cursors[table.name] ?: EPOCH
+            var maxSeen: Instant? = null
             var offset = 0
             while (true) {
-                val rows = rest.changedSince(table.name, "server_updated_at", sinceIso, token, limit = 500, offset = offset)
+                val rows = rest.changedSince(table.name, "server_updated_at", since, token, limit = 500, offset = offset)
                 if (rows.isEmpty()) break
-                db.withTransaction { rows.forEach { if (apply(table, it, localUser)) count++ } }
+                db.withTransaction {
+                    val before = maxOutboxId()
+                    rows.forEach { if (apply(table, it, localUser)) count++ }
+                    // Rows we just pulled must not be pushed back: drop the outbox entries their triggers created.
+                    sql.execSQL("DELETE FROM sync_outbox WHERE id > ?", arrayOf(before))
+                }
+                rows.mapNotNull { (it["server_updated_at"] as? JsonPrimitive)?.content?.let(::parseServerTime) }.maxOrNull()?.let { t ->
+                    if (maxSeen == null || t > maxSeen) maxSeen = t
+                }
                 if (rows.size < 500) break
                 offset += rows.size
             }
+            // Overlap the window: a transaction that started earlier may commit after rows we already saw.
+            maxSeen?.let { cursors[table.name] = it.minusSeconds(CURSOR_OVERLAP_SECONDS).toString() }
         }
         afterPull(rest, token)
-        settings.update { it.copy(lastSyncAt = started) }
+        val encoded = AppJson.encodeToString(MapSerializer(String.serializer(), String.serializer()), cursors)
+        settings.update { it.copy(syncCursors = encoded, lastSyncAt = clock.now()) }
         return count
+    }
+
+    private fun parseServerTime(s: String): Instant? = runCatching { OffsetDateTime.parse(s.replace(' ', 'T')).toInstant() }.getOrNull()
+
+    private fun maxOutboxId(): Long = sql.query("SELECT COALESCE(MAX(id), 0) FROM sync_outbox").use { c -> c.moveToFirst(); c.getLong(0) }
+
+    /**
+     * Queues every local row for upload (in foreign-key order). Called after sign-in so an account receives this
+     * device's whole library, not only changes made since the last push.
+     */
+    suspend fun enqueueSnapshot() = db.withTransaction {
+        sql.execSQL("DELETE FROM sync_outbox")
+        val now = clock.now()
+        for (t in tables) sql.execSQL("INSERT INTO sync_outbox (entity, entityId, op, createdAt, attempts) SELECT '${t.name}', id, 'UPSERT', $now, 0 FROM `${t.name}`")
+        sql.execSQL("INSERT INTO sync_outbox (entity, entityId, op, createdAt, attempts) SELECT 'users', id, 'UPSERT', $now, 0 FROM users")
+        sql.execSQL("INSERT INTO sync_outbox (entity, entityId, op, createdAt, attempts) SELECT 'file', bookId, 'UPLOAD', $now, 0 FROM book_sources WHERE fileReference IS NOT NULL")
     }
 
     /** @return true when the local database changed. */
@@ -264,5 +298,9 @@ class SyncEngine @Inject constructor(
         }
     }
 
-    companion object { const val BUCKET = "book-files" }
+    companion object {
+        const val BUCKET = "book-files"
+        private const val EPOCH = "1970-01-01T00:00:00Z"
+        private const val CURSOR_OVERLAP_SECONDS = 300L
+    }
 }

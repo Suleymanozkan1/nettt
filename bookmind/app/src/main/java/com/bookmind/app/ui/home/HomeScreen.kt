@@ -134,7 +134,7 @@ fun HomeScreen(
             }
             item { SectionTitle(stringResource(R.string.home_continue)) }
             if (h.continueBooks.isEmpty()) item {
-                EmptyState(stringResource(R.string.library_empty_title), stringResource(R.string.library_empty_body), stringResource(R.string.add_book), onAddBook)
+                EmptyState(stringResource(R.string.library_empty_title), stringResource(R.string.library_empty_body), actionLabel = stringResource(R.string.add_book), onAction = onAddBook)
             }
             items(h.continueBooks, key = { it.id }) { b ->
                 ListItem(

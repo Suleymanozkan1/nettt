@@ -10,3 +10,4 @@ captures/
 secrets.properties
 supabase/.env
 supabase/.temp/
+test-results/

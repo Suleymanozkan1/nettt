@@ -55,8 +55,9 @@ android {
     }
 
     sourceSets {
-        // Exported Room schemas are test assets so MigrationTestHelper can verify every migration.
-        getByName("test").assets.srcDir("$projectDir/schemas")
+        // Exported Room schemas are debug assets so MigrationTestHelper (Robolectric) can verify every migration.
+        // Release builds do not include them.
+        getByName("debug").assets.srcDir("$projectDir/schemas")
     }
 
     testOptions {
@@ -134,4 +135,6 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.hilt.android.testing)
+    kspTest(libs.hilt.compiler)
 }

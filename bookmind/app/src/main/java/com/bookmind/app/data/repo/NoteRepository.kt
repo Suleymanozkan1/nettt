@@ -21,7 +21,6 @@ class NoteRepository @Inject constructor(
     private val db: BookMindDatabase,
     private val users: UserRepository,
     private val reviews: ReviewRepository,
-    private val sync: SyncRecorder,
     private val clock: AppClock,
 ) {
     fun notes(bookId: String? = null, query: String = ""): Flow<List<UserNoteEntity>> =
@@ -47,7 +46,6 @@ class NoteRepository @Inject constructor(
             chapterId = chapterId ?: existing?.chapterId, inReviewQueue = addToReview || existing?.inReviewQueue == true, updatedAt = now,
         )
         db.notes().upsert(note)
-        sync.upsert("user_notes", note.id)
         if (existing == null) db.xp().insert(XpEventEntity(newId(), userId, Gamification.Kind.NOTE_CREATED.name, Gamification.xp(Gamification.XpEvent(Gamification.Kind.NOTE_CREATED)), now, note.id))
         if (note.inReviewQueue) addToReview(note)
         return note.id
@@ -61,18 +59,16 @@ class NoteRepository @Inject constructor(
             bookId = note.bookId, type = LearningItemType.USER_NOTE, dedupeKey = "note:${note.id}", prompt = prompt, expected = note.content,
             explanation = null, sourceRefs = listOfNotNull(chapter?.let { SourceRef(it.orderIndex, it.title, it.pageStart) }).toJson(),
         )
-        if (!note.inReviewQueue) { db.notes().upsert(note.copy(inReviewQueue = true, updatedAt = clock.now())); sync.upsert("user_notes", note.id) }
+        if (!note.inReviewQueue) { db.notes().upsert(note.copy(inReviewQueue = true, updatedAt = clock.now())) }
     }
 
     suspend fun toggleFavorite(note: UserNoteEntity) {
         db.notes().upsert(note.copy(isFavorite = !note.isFavorite, updatedAt = clock.now()))
-        sync.upsert("user_notes", note.id)
     }
 
     suspend fun delete(note: UserNoteEntity) {
         val now = clock.now()
         db.notes().upsert(note.copy(deletedAt = now, updatedAt = now))
         db.learning().byKey(note.userId, "note:${note.id}")?.let { reviews.suspend(it.id, true) }
-        sync.upsert("user_notes", note.id)
     }
 }

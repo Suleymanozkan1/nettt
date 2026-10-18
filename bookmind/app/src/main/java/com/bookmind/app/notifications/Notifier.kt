@@ -22,7 +22,6 @@ object Notifier {
     const val EXTRA_DESTINATION = "destination"
 
     fun ensureChannels(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL_REMINDERS, context.getString(R.string.channel_reminders), NotificationManager.IMPORTANCE_DEFAULT))
         nm.createNotificationChannel(NotificationChannel(CHANNEL_PROCESSING, context.getString(R.string.channel_processing), NotificationManager.IMPORTANCE_LOW))
