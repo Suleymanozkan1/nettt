@@ -141,13 +141,13 @@ fun SettingsScreen(onNotifications: () -> Unit, vm: SettingsViewModel = hiltView
 
             SectionTitle(stringResource(R.string.learning_settings))
             Text(stringResource(R.string.daily_goal), style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(5, 10, 20, 30).forEach { m -> FilterChip(user?.dailyGoalMinutes == m, { vm.goal(m) }, { Text(stringResource(R.string.minutes_short, m)) }) }
             }
             ListItem(headlineContent = { Text(stringResource(R.string.notifications_title)) }, supportingContent = { Text(stringResource(R.string.notifications_summary)) },
                 modifier = Modifier.clickable(onClick = onNotifications))
             Text(stringResource(R.string.srs_algorithm), style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(s.algorithm == SrsAlgorithm.FSRS, { vm.update { it.copy(algorithm = SrsAlgorithm.FSRS) } }, { Text("FSRS") })
                 FilterChip(s.algorithm == SrsAlgorithm.SM2, { vm.update { it.copy(algorithm = SrsAlgorithm.SM2) } }, { Text("SM-2") })
             }
@@ -163,7 +163,7 @@ fun SettingsScreen(onNotifications: () -> Unit, vm: SettingsViewModel = hiltView
                 TeachingLevel.entries.forEach { l -> FilterChip(s.teachingLevel == l.name, { vm.update { it.copy(teachingLevel = l.name) } }, { Text(com.bookmind.app.ui.teach.levelLabel(l)) }) }
             }
             Text(stringResource(R.string.default_summary_length), style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(SummaryLength.SHORT to R.string.length_short, SummaryLength.MEDIUM to R.string.length_medium, SummaryLength.LONG to R.string.length_long).forEach { (l, label) ->
                     FilterChip(s.summaryLength == l.name, { vm.update { it.copy(summaryLength = l.name) } }, { Text(stringResource(label)) })
                 }
@@ -189,13 +189,13 @@ fun SettingsScreen(onNotifications: () -> Unit, vm: SettingsViewModel = hiltView
             Text(stringResource(R.string.ai_usage, usage.size, tokens, "%.3f".format(cost)), style = MaterialTheme.typography.bodySmall)
 
             SectionTitle(stringResource(R.string.appearance))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(ThemeMode.SYSTEM to R.string.theme_system, ThemeMode.LIGHT to R.string.theme_light, ThemeMode.DARK to R.string.theme_dark).forEach { (t, label) ->
                     FilterChip(s.theme == t, { vm.update { it.copy(theme = t) } }, { Text(stringResource(label)) })
                 }
             }
             Text(stringResource(R.string.language), style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("system" to R.string.lang_system, "tr" to R.string.lang_tr, "en" to R.string.lang_en).forEach { (tag, label) ->
                     FilterChip(s.language == tag, {
                         vm.update { it.copy(language = tag) }
@@ -213,14 +213,14 @@ fun SettingsScreen(onNotifications: () -> Unit, vm: SettingsViewModel = hiltView
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
                 OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.password)) }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button({ vm.signIn(email, password, false) }, enabled = email.contains('@') && password.length >= 8) { Text(stringResource(R.string.sign_in)) }
                     OutlinedButton({ vm.signIn(email, password, true) }, enabled = email.contains('@') && password.length >= 8) { Text(stringResource(R.string.sign_up)) }
                 }
             } else {
                 Text(stringResource(R.string.signed_in_as, acct?.email ?: acct!!.userId))
                 Text(stringResource(R.string.sync_pending, pending), style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(vm::syncNow) { Text(stringResource(R.string.sync_now)) }
                     OutlinedButton(vm::signOut) { Text(stringResource(R.string.sign_out)) }
                 }

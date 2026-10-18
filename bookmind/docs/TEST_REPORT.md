@@ -75,8 +75,15 @@ maliyet tablosu. Gerçek Claude API'ye istek atan test **yoktur** (API anahtarı
 
 `scripts/android-smoke.sh`, CI'da API 34 emülatöründe **R8'li release APK** ile: kurulum → onboarding →
 demo kitabın arka planda (WorkManager + Hilt worker) işlenmesi → kütüphane → kitap → hızlı özet; logcat'te çökme
-denetimi. Bu oturumun ortamında KVM olmadığından emülatör yerelde çalıştırılamadı; sonuç CI çalıştırmasındadır
-(bkz. final rapor).
+denetimi. Bu oturumun ortamında KVM olmadığından emülatör yerelde çalıştırılamadı; CI'da çalışır.
+
+İlk CI çalıştırmasının bulguları (320×640 dp küçük ekranlı emülatör):
+- Release APK kuruldu ve soğuk başlatma 3,6 sn'de tamamlandı; logcat'te çökme yok.
+- **Gerçek UI hatası bulundu ve düzeltildi:** sabit `Row` içindeki seçim çipleri (onboarding hedef/saat, plan,
+  ayarlar, bildirim yoğunluğu/tatil) dar ekranda taşıyor, son çip dikey olarak eziliyordu → `FlowRow` ile satır
+  kaydırma.
+- Betik hatası düzeltildi: "Start" metni önce "Start with a sample book" onay kutusunu eşliyordu; artık tam eşleşme
+  öncelikli.
 
 ## Lint uyarıları (44)
 

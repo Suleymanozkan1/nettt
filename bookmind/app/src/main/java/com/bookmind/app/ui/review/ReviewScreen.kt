@@ -2,6 +2,7 @@ package com.bookmind.app.ui.review
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -190,7 +191,7 @@ private fun Front(item: DueItem, hintUsed: Boolean, onHint: () -> Unit, onReveal
             }
         }
     } else if (q?.type == QuestionType.TRUE_FALSE) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ onReveal("true") }) { Text(stringResource(R.string.true_label)) }
             OutlinedButton({ onReveal("false") }) { Text(stringResource(R.string.false_label)) }
         }

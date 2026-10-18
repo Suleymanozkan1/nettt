@@ -2,6 +2,7 @@ package com.bookmind.app.ui.plan
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -67,7 +68,7 @@ fun PlanScreen(bookId: String, onBack: () -> Unit, vm: PlanViewModel = hiltViewM
             item {
                 Text(stringResource(R.string.plan_hint), style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(R.string.daily_minutes), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(5, 10, 20, 30).forEach { m -> FilterChip(minutes == m, { minutes = m }, { Text(stringResource(R.string.minutes_short, m)) }) }
                 }
                 Button({ vm.create(minutes) }, Modifier.padding(vertical = 8.dp)) { Text(stringResource(if (plan == null) R.string.create_plan else R.string.rebuild_plan)) }

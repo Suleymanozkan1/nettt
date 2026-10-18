@@ -100,12 +100,12 @@ fun NotificationSettingsScreen(onBack: () -> Unit, vm: NotificationSettingsViewM
                     verticalAlignment = Alignment.CenterVertically) { Text(stringResource(label), Modifier.weight(1f)); Switch(t in p.types, null, enabled = p.enabled) }
             }
             Text(stringResource(R.string.intensity), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(p.intensity == 1, { vm.save(p.copy(intensity = 1)) }, { Text(stringResource(R.string.intensity_once)) }, enabled = p.enabled)
                 FilterChip(p.intensity == 2, { vm.save(p.copy(intensity = 2)) }, { Text(stringResource(R.string.intensity_evening)) }, enabled = p.enabled)
             }
             Text(stringResource(R.string.vacation_mode), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val today = vm.today()
                 FilterChip(p.pausedUntil == null, { vm.save(p.copy(pausedUntil = null)) }, { Text(stringResource(R.string.vacation_off)) })
                 listOf(3L, 7L, 14L).forEach { n ->

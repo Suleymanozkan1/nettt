@@ -12,7 +12,7 @@ adb() { timeout "${ADB_TIMEOUT:-60}" "$ADB_BIN" "$@"; }
 trap 'rc=$?; adb logcat -d > "$OUT/logcat.txt" 2>/dev/null || true; adb exec-out screencap -p > "$OUT/last.png" 2>/dev/null || true; exit $rc' EXIT
 
 dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true; adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null 2>&1 || true; }
-# Prints "x y" of the first node whose text or content-desc contains $1 (case-sensitive), or nothing.
+# Prints "x y" of the node whose text or content-desc equals $1, else the first that contains it, else nothing.
 find_text() {
   dump
   python3 - "$OUT/ui.xml" "$1" <<'PY'
@@ -21,11 +21,16 @@ try:
     root = ET.parse(sys.argv[1]).getroot()
 except Exception:
     sys.exit(0)
-for n in root.iter("node"):
-    if sys.argv[2] in (n.get("text") or "") or sys.argv[2] in (n.get("content-desc") or ""):
-        x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
-        print((x1 + x2) // 2, (y1 + y2) // 2)
-        break
+nodes = list(root.iter("node"))
+labels = lambda n: ((n.get("text") or ""), (n.get("content-desc") or ""))
+target = sys.argv[2]
+# Note: an Element without children is falsy, so compare with None explicitly.
+match = next((n for n in nodes if target in labels(n)), None)
+if match is None:
+    match = next((n for n in nodes if any(target in l for l in labels(n))), None)
+if match is not None:
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", match.get("bounds")))
+    print((x1 + x2) // 2, (y1 + y2) // 2)
 PY
 }
 wait_text() { # wait_text "label" [seconds]
@@ -64,7 +69,7 @@ adb exec-out screencap -p > "$OUT/02-library.png"
 
 echo "== book detail and on-device quick summary"
 tap_text "Öğrenmenin Bilimi"
-wait_text "Unutma Eğrisi" 60
+wait_text "Quick summary" 60
 tap_text "Quick summary"
 tap_text "Generate"
 wait_text "Temel fikir" 90

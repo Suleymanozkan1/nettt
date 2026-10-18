@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -120,7 +121,7 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
                 Text(stringResource(R.string.onb_setup_title), style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(16.dp))
                 Text(stringResource(R.string.onb_goal_question))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(5, 10, 20, 30).forEach { m -> FilterChip(goal == m, { goal = m }, { Text(stringResource(R.string.minutes_short, m)) }) }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -128,7 +129,7 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
                     Text(stringResource(R.string.onb_reminders), Modifier.weight(1f))
                     Switch(remindersOn, null)
                 }
-                if (remindersOn) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (remindersOn) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(8, 12, 19, 21).forEach { h -> FilterChip(hour == h, { hour = h }, { Text("%02d:00".format(h)) }) }
                 }
                 Spacer(Modifier.height(16.dp))
