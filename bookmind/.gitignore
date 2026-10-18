@@ -1,0 +1,12 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+*.keystore
+*.jks
+secrets.properties
+supabase/.env
+supabase/.temp/
