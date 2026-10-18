@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.ContextCompat
 import androidx.core.os.LocaleListCompat
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
@@ -22,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -44,7 +46,7 @@ class BookMindApp : Application(), Configuration.Provider {
         Notifier.ensureChannels(this)
         appScope.launch {
             val lang = settings.settings.first().language
-            if (lang != "system") AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang))
+            if (lang != "system") withContext(Dispatchers.Main) { AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang)) }
             users.userId()
             users.refreshTimezone()
             reminders.reschedule()
@@ -53,10 +55,10 @@ class BookMindApp : Application(), Configuration.Provider {
             if (auth.account.value != null) scheduler.schedulePeriodicSync()
         }
         // Reminders follow the device time zone; recompute when it changes.
-        registerReceiver(object : BroadcastReceiver() {
+        ContextCompat.registerReceiver(this, object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 appScope.launch { users.refreshTimezone(); reminders.reschedule() }
             }
-        }, IntentFilter(Intent.ACTION_TIMEZONE_CHANGED))
+        }, IntentFilter(Intent.ACTION_TIMEZONE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 }
