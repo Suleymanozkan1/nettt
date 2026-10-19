@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.bookmind.app.MainActivity
@@ -118,6 +119,11 @@ class ScreenshotTour {
             runCatching { click(s(R.string.show_answer)); pause(500); shot("${prefix}10_review_answer") }
             click(s(R.string.tab_progress)); runCatching { waitFor(s(R.string.forecast)) }; pause(500); shot("${prefix}11_progress")
             click(s(R.string.tab_profile)); pause(800); shot("${prefix}12_profile")
+            runCatching {
+                compose.onAllNodesWithText(s(R.string.ai_title)).onFirst().performScrollTo().performClick()
+                waitFor(s(R.string.ai_hero_title)); pause(500); shot("${prefix}12b_ai")
+                back(it); pause(400)
+            }
             click(s(R.string.tab_today)); pause(800); shot("${prefix}13_home_after")
         }
     }

@@ -2,6 +2,8 @@
 # Release-APK smoke test on an Android emulator (run in CI by reactivecircus/android-emulator-runner).
 # Drives the real UI through the accessibility tree: onboarding -> demo book is processed in the background
 # (WorkManager + Hilt worker, R8-minified) -> library -> quick summary. Fails on any crash in logcat.
+# With AI_SMOKE=1 it also downloads the light on-device model in the app and checks that "Ask the book" is
+# answered by that model (LiteRT-LM on Android, release build).
 set -euo pipefail
 APK=${APK:-app-x86_64-release.apk}
 PKG=com.bookmind.app
@@ -94,6 +96,34 @@ wait_text "Key idea" 90
 dump
 if grep -qE 'text="[^"]*(Temel fikir|Hızlı özet|Öne çıkan)' "$OUT/ui.xml"; then echo "FAIL: Turkish text on an English screen"; exit 1; fi
 adb exec-out screencap -p > "$OUT/03-summary.png"
+
+if [ "${AI_SMOKE:-0}" = 1 ]; then
+  echo "== on-device AI: download the light model inside the app (real Hugging Face download, SHA-256 check)"
+  # The emulator has ~4 GB RAM, so the app recommends the light model (Qwen3 0.6B, 614 MB).
+  adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
+  tap_text "Profile"
+  scroll_tap_text "AI assistant"
+  wait_text "Qwen3 0.6B" 30
+  adb exec-out screencap -p > "$OUT/04-ai-setup.png"
+  tap_text "Download ·" 30
+  if wait_text "Download anyway" 5 quiet; then tap_text "Download anyway"; fi
+  wait_text "AI is ready" 900
+  adb exec-out screencap -p > "$OUT/05-ai-ready.png"
+
+  echo "== ask the book: the answer must come from the model running on the device"
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+  tap_text "Library"
+  tap_text "The Science of Learning"
+  scroll_tap_text "Ask the book"
+  tap_text "Type your question"
+  adb shell input text "Why%sdoes%sspaced%srepetition%swork?"; sleep 1
+  tap_text "Send"
+  if ! wait_text "AI · Qwen3 0.6B" 600; then
+    adb exec-out screencap -p > "$OUT/06-ask.png"
+    echo "FAIL: the answer did not come from the on-device model"; exit 1
+  fi
+  adb exec-out screencap -p > "$OUT/06-ask.png"
+fi
 
 echo "== crash check"
 no_crash

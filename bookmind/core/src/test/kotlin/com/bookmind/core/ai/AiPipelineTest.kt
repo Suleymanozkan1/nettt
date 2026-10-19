@@ -35,8 +35,12 @@ class AiPipelineTest {
     }
 
     @Test fun `malformed or incomplete model output becomes InvalidOutput, not a crash`() {
-        val e = runCatching { AiJson.decode(QuizDraft.serializer(), "{\"questions\": [{\"type\": 12}]}") }.exceptionOrNull()
+        val e = runCatching { AiJson.decode(ChapterAnalysis.serializer(), "{\"summary\": \"s\", \"concepts\": \"not a list\"}") }.exceptionOrNull()
         assertIs<AiException.InvalidOutput>(e)
+        // An unreadable question is dropped on its own; a quiz left with none is invalid output.
+        val quiz = AiJson.decode(QuizDraft.serializer(), "{\"questions\": [{\"type\": 12}]}")
+        assertTrue(quiz.questions.isEmpty())
+        assertIs<AiException.InvalidOutput>(runCatching { OutputValidator.quiz(quiz, emptyList()) }.exceptionOrNull())
         // Unknown enum values are coerced to defaults where a default exists, missing optional fields are fine.
         val a = AiJson.decode(BookAnalysis.serializer(), """{"genre":"poetry","mainTopic":"x","extra":true}""")
         assertEquals(BookGenre.INFORMATIONAL, a.genre)

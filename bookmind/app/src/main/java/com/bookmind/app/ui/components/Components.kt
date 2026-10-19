@@ -511,10 +511,12 @@ fun BookCover(title: String, author: String?, seed: String, modifier: Modifier =
                 drawCircle(Color.White.copy(alpha = 0.07f), radius = size.width * 0.7f, center = Offset(size.width * 1.05f, size.height * 0.92f))
             },
     ) {
-        // Type scales with the cover so long words fit on small covers.
+        // Type scales with the cover, and shrinks further so the longest word never breaks mid-word on a small cover.
         val w = maxWidth.value
-        val titleSize = (w * 0.115f).coerceIn(11f, 22f)
         val pad = (w * 0.11f).dp
+        val textWidth = w - (pad.value * 1.7f + 2f)
+        val longestWord = remember(title) { title.split(Regex("\\s+")).maxOfOrNull { it.length } ?: 1 }
+        val titleSize = minOf((w * 0.115f).coerceIn(7f, 22f), textWidth / (longestWord * 0.56f)).coerceAtLeast(6f)
         Column(Modifier.fillMaxSize().padding(start = pad + 2.dp, end = pad * 0.7f, top = pad, bottom = pad * 0.8f)) {
             Box(Modifier.width((w * 0.16f).dp).height(2.dp).background(Color.White.copy(alpha = 0.7f)))
             Spacer(Modifier.height((w * 0.07f).dp))
@@ -526,7 +528,7 @@ fun BookCover(title: String, author: String?, seed: String, modifier: Modifier =
             )
             Spacer(Modifier.weight(1f))
             if (author != null) Text(author, color = Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                fontSize = (w * 0.068f).coerceIn(8f, 12f).sp, fontWeight = FontWeight.SemiBold)
+                fontSize = (w * 0.068f).coerceIn(6f, 12f).sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

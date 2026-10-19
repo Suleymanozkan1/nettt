@@ -163,7 +163,7 @@ class LearningAi(
     suspend fun analyzeChapter(book: Book, chapter: LocalHeuristicEngine.ChapterInput, chunk: String, partInfo: String): AiResult<ChapterAnalysis> {
         val request = PromptBuilder.chapterAnalysis(book.title, chapter.title, chapter.index, book.genre, book.language, chunk, partInfo)
             .copy(payload = mapOf("chapters" to chaptersPayload(listOf(chapter.copy(text = chunk)))))
-        return run(request, ChapterAnalysis.serializer(), { OutputValidator.chapterAnalysis(it, chapter.text, book.language) }, { local.chapterAnalysis(chapter.copy(text = chunk)) }, lang = book.language)
+        return run(request, LenientChapterAnalysis, { OutputValidator.chapterAnalysis(it, chapter.text, book.language) }, { local.chapterAnalysis(chapter.copy(text = chunk)) }, lang = book.language)
     }
 
     suspend fun summarize(
@@ -205,7 +205,8 @@ class LearningAi(
         val result = run(
             request,
             QuizDraft.serializer(),
-            { draft -> OutputValidator.quiz(draft, texts, book.language).let { v -> OutputValidator.Validated(QuizDraft(v.value), v.warnings) } },
+            // Models sometimes add a type the user did not ask for; only the chosen types are kept.
+            { draft -> OutputValidator.quiz(QuizDraft(draft.questions.filter { it.type in types }), texts, book.language).let { v -> OutputValidator.Validated(QuizDraft(v.value), v.warnings) } },
             { QuizDraft(local.quiz(concepts, chapters, count, types, seed, book.language)) },
             lang = book.language,
         )

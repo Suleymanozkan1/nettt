@@ -14,7 +14,16 @@ import kotlin.math.min
  * labelled as "local" (not AI) in [GenerationInfo].
  */
 class LocalHeuristicEngine {
-    private companion object { const val DAMPING = 0.85 }
+    private companion object {
+        const val DAMPING = 0.85
+        val verbalEndings = listOf(
+            "ilen", "ılan", "ulan", "ülen", "ilmiş", "ılmış", "ilir", "ılır",
+            "dığı", "diği", "duğu", "düğü", "tığı", "tiği", "tuğu", "tüğü",
+            "mesi", "ması", "mesini", "masını", "mekte", "makta", "erek", "arak", "ebilir", "abilir", "ebilmek", "abilmek",
+            "ecek", "acak", "eceği", "acağı", "yordu", "iyor", "ıyor", "uyor", "üyor",
+        )
+        val copulaEndings = listOf("dır", "dir", "dur", "dür", "tır", "tir", "tur", "tür")
+    }
 
     data class ChapterInput(val index: Int, val title: String, val text: String, val pageStart: Int? = null)
 
@@ -128,13 +137,13 @@ class LocalHeuristicEngine {
             val ws = Lexicon.words(s.text)
             for (i in ws.indices) {
                 val w = TextNormalizer.foldCase(ws[i])
-                if (w.length >= 5 && w !in Lexicon.stopwords && !w.all(Char::isDigit)) {
+                if (w.length >= 5 && w !in Lexicon.stopwords && !w.all(Char::isDigit) && !looksVerbal(w)) {
                     val k = Lexicon.stem(w)
                     unigrams[k] = (unigrams[k]?.first ?: w) to ((unigrams[k]?.second ?: 0) + 1)
                 }
                 if (i + 1 < ws.size) {
                     val a = TextNormalizer.foldCase(ws[i]); val b = TextNormalizer.foldCase(ws[i + 1])
-                    if (a.length >= 4 && b.length >= 4 && a !in Lexicon.stopwords && b !in Lexicon.stopwords) {
+                    if (a.length >= 4 && b.length >= 4 && a !in Lexicon.stopwords && b !in Lexicon.stopwords && !looksVerbal(a) && !looksVerbal(b)) {
                         val k = Lexicon.stem(a) + " " + Lexicon.stem(b)
                         bigrams[k] = (bigrams[k]?.first ?: "$a $b") to ((bigrams[k]?.second ?: 0) + 1)
                     }
@@ -184,6 +193,18 @@ class LocalHeuristicEngine {
     fun containsTerm(text: String, term: String): Boolean = termRegex(term).containsMatchIn(text)
 
     /** Matches the term at a word start, allowing Turkish suffixes ("kavram" matches "kavramların"). */
+    /**
+     * Turkish participles, verbal nouns and predicates ("öğrenilen", "kullanılabilmesidir", "yaptığı") repeat often
+     * but are not concepts; frequency-based candidates with these endings are skipped. Terms named in a definition
+     * sentence are still accepted.
+     */
+    private fun looksVerbal(word: String): Boolean {
+        val w = word.lowercase()
+        if (verbalEndings.any { w.endsWith(it) && w.length >= it.length + 3 }) return true
+        // Copula "-dır/-dir/-dur/-dür/-tır…" on long words; short nouns such as "kültür" or "tür" are kept.
+        return w.length >= 9 && copulaEndings.any { w.endsWith(it) }
+    }
+
     fun termRegex(term: String): Regex {
         val parts = Lexicon.words(term).map { Regex.escape(it) }
         return Regex("(?<![\\p{L}])" + parts.joinToString("\\s+") + "[\\p{L}'’]*", RegexOption.IGNORE_CASE)

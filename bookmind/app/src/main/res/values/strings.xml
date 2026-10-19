@@ -275,7 +275,7 @@
     <string name="onb_add_demo_hint">Öğrenme bilimi üzerine kısa, özgün bir kitap ekler.</string>
     <string name="onb_body_1">Kitabını ekle; BookMind bölümlerini, kavramlarını ve ana fikirlerini çıkarsın, kaynağıyla birlikte özetlesin.</string>
     <string name="onb_body_2">Okumak öğrenmek değildir. Yapay zekâ öğretmen, quizler ve unutma eğrisine göre zamanlanan tekrarlar bilgiyi kalıcı yapar.</string>
-    <string name="onb_body_3">Kitapların cihazında kalır. Yapay zekâ isteğe bağlıdır; ürettiği her içerik etiketlenir ve kitapta olmayan bilgi uydurulmaz.</string>
+    <string name="onb_body_3">Yapay zekâ telefonunda çalışır: ücretsiz, internetsiz, kitapların cihazdan çıkmaz. Ürettiği her içerik etiketlenir ve kitapta olmayan bilgi uydurulmaz.</string>
     <string name="onb_goal_question">Günde ne kadar öğrenmek istersin?</string>
     <string name="onb_language_body">Uygulamayı hangi dilde kullanmak istersin? Özetler, sorular ve öğretmen de bu dilde konuşur. Daha sonra Profil\'den değiştirebilirsin.</string>
     <string name="onb_reminders">Günlük hatırlatma</string>
@@ -285,7 +285,7 @@
     <string name="onb_start">Başla</string>
     <string name="onb_title_1">Kitaplarını anla</string>
     <string name="onb_title_2">Öğren ve hatırla</string>
-    <string name="onb_title_3">Gizlilik ve dürüstlük</string>
+    <string name="onb_title_3">Telefonunda, gizli ve dürüst</string>
     <string name="open_existing">Mevcut kitabı aç</string>
     <string name="origin_ai">Yapay zekâ · %1$s</string>
     <string name="origin_local">Klasik yöntem · kitaptan seçildi</string>

@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lightbulb
@@ -348,17 +350,20 @@ private fun AiPromoCard(a: com.bookmind.app.ai.AiState, onOpen: () -> Unit, onDi
                     com.bookmind.app.ui.components.ProgressBar(running?.fraction ?: 0f, Modifier.fillMaxWidth())
                 } else {
                     Text(stringResource(R.string.ai_promo_body), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                    Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        com.bookmind.app.ui.components.PrimaryButton(
-                            stringResource(R.string.ai_promo_action) + " · " + android.text.format.Formatter.formatShortFileSize(context, a.selected!!.bytes),
-                            onOpen, icon = Icons.Filled.AutoAwesome,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        com.bookmind.app.ui.components.GhostButton(stringResource(R.string.ai_not_now), onDismiss, color = cs.onSurfaceVariant)
-                    }
                 }
             }
+            if (a.download == null) {
+                IconButton(onDismiss, Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Close, stringResource(R.string.ai_not_now), Modifier.size(18.dp), tint = cs.onSurfaceVariant)
+                }
+            }
+        }
+        if (a.download == null) {
+            Spacer(Modifier.height(12.dp))
+            com.bookmind.app.ui.components.PrimaryButton(
+                stringResource(R.string.ai_promo_action) + " · " + android.text.format.Formatter.formatShortFileSize(context, a.selected!!.bytes),
+                onOpen, Modifier.fillMaxWidth(), icon = Icons.Filled.AutoAwesome,
+            )
         }
     }
 }

@@ -100,7 +100,7 @@ Room şeması değişirse sunucu tablolarını yeniden üret:
 
 ```sh
 ./gradlew :core:test                 # 100 birim testi (FSRS, ayrıştırıcılar, AI hattı, yerel modeller, BM25, planlayıcı, senkron istemcisi)
-./gradlew :app:testDebugUnitTest     # 36 test (+4 isteğe bağlı ekran görüntüsü turu): Room/migration, işleme hattı, depolar, senkronizasyon, Compose UI (Robolectric + Hilt)
+./gradlew :app:testDebugUnitTest     # 42 test (+4 isteğe bağlı ekran görüntüsü turu): Room/migration, işleme hattı, depolar, senkronizasyon, Compose UI (Robolectric + Hilt)
 ./gradlew :app:lintDebug
 bash scripts/test-supabase-sql.sh    # migration'lar + RLS testleri (PostgreSQL 16)
 (cd supabase/functions && deno test --allow-env tests/)   # Edge Function testleri

@@ -203,7 +203,7 @@ class AppUiTest {
         launch()
         // Home offers the one-tap setup until a model is installed; "Not now" hides it for good.
         waitForText(s(R.string.ai_promo_title))
-        compose.onNodeWithText(s(R.string.ai_not_now)).performClick()
+        compose.onNodeWithContentDescription(s(R.string.ai_not_now)).performClick()
         eventually { runBlocking { settings.current().aiPromptDismissed } }
         clickTab(R.string.tab_profile)
         waitForText(s(R.string.ai_title))

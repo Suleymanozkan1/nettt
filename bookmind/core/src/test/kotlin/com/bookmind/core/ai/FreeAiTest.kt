@@ -80,6 +80,8 @@ class FreeAiTest {
         val src = listOf("Hermann Ebbinghaus on dokuzuncu yüzyılda hafızasını ölçtü. Katılımcıların yüzde 90'ı hatırladı; 1885 yılında yayımlandı.")
         val ok = Faithfulness.check(listOf("Bu deneyde Ebbinghaus 1885'te sonuçlarını yayımladı ve oran 90 idi."), src)
         assertTrue(ok.clean, ok.toString())
+        // Case endings on names are not "new" names.
+        assertTrue(Faithfulness.check(listOf("Bu, Ebbinghaus'un bulgusudur ve Ebbinghaus’ın deneyi de öyle."), src).clean)
         val bad = Faithfulness.check(listOf("Bunu 1923'te Sigmund Freud doğruladı ve 3 deney yaptı."), src)
         assertEquals(listOf("1923", "3"), bad.unsupportedNumbers)
         assertEquals(listOf("Sigmund", "Freud"), bad.unsupportedNames)
@@ -103,5 +105,26 @@ class FreeAiTest {
         assertEquals("""{"q":[]}""", AiJson.repairTruncated("""{"q":[{"type":"x","prom"""))
         assertEquals(null, AiJson.repairTruncated("""{"a":"no comma yet"""))
         assertEquals("""{"done":true}""", AiJson.repairTruncated("""{"done":true} trailing"""))
+    }
+
+    @Test fun `loosely named question types are mapped and one unreadable question does not sink the quiz`() {
+        val raw = """{"questions":[
+            {"type":"pairs","prompt":"Eşleştir","pairs":[{"left":"a","right":"b"}]},
+            {"type":"Multiple Choice","prompt":"Hangisi?","options":["A","B","C","D"],"answer":"A"},
+            {"type":"true/false","prompt":"Doğru mu?","answer":"true"},
+            {"type":"riddle","prompt":"?"},
+            {"prompt":"type missing"}]}"""
+        val quiz = AiJson.decode(QuizDraft.serializer(), raw)
+        assertEquals(listOf(QuestionType.MATCHING, QuestionType.MULTIPLE_CHOICE, QuestionType.TRUE_FALSE), quiz.questions.map { it.type })
+        assertEquals("fill_blank", LenientQuestionList.normalizeType("Fill in the blank"))
+    }
+
+    @Test fun `concepts a small model put under keyPoints are recovered`() {
+        val raw = """{"summary":"s","keyPoints":[{"title":"Unutma Eğrisi","explanation":"Bilginin kaybolma hızı.","importance":5},"Düz madde"]}"""
+        val a = AiJson.decode(LenientChapterAnalysis, raw)
+        assertEquals(listOf("Unutma Eğrisi"), a.concepts.map { it.title })
+        assertEquals(listOf("Unutma Eğrisi: Bilginin kaybolma hızı.", "Düz madde"), a.keyPoints)
+        val normal = AiJson.decode(LenientChapterAnalysis, """{"summary":"s","keyPoints":["a"],"concepts":[{"title":"T","explanation":"e"}]}""")
+        assertEquals(listOf("a"), normal.keyPoints); assertEquals(listOf("T"), normal.concepts.map { it.title })
     }
 }

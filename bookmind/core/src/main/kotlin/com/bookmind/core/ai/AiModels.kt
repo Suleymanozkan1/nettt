@@ -1,8 +1,20 @@
 package com.bookmind.core.ai
 
 import com.bookmind.core.text.SourceRef
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonTransformingSerializer
+import kotlinx.serialization.json.contentOrNull
 
 /** Bump when a prompt or schema changes; stored with every generated object and part of the cache key. */
 object PromptVersions {
@@ -96,6 +108,30 @@ data class ChapterAnalysis(
     val examples: List<String> = emptyList(),
     val people: List<String> = emptyList(),
 )
+
+/**
+ * Reads a chapter analysis from a small model that put its concepts into "keyPoints" as objects
+ * ({"title", "explanation", …}) instead of strings: those objects become concepts (when "concepts" is missing)
+ * and their titles become the key points.
+ */
+object LenientChapterAnalysis : JsonTransformingSerializer<ChapterAnalysis>(ChapterAnalysis.serializer()) {
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        val obj = element as? JsonObject ?: return element
+        val points = obj["keyPoints"] as? JsonArray ?: return element
+        val objects = points.filterIsInstance<JsonObject>().filter { it["title"] != null }
+        if (objects.isEmpty()) return element
+        val asText = points.mapNotNull { p ->
+            when (p) {
+                is JsonPrimitive -> p
+                is JsonObject -> listOfNotNull(p["title"], p["explanation"]).mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                    .joinToString(": ").takeIf { it.isNotBlank() }?.let(::JsonPrimitive)
+                else -> null
+            }
+        }
+        val concepts = (obj["concepts"] as? JsonArray)?.takeIf { it.isNotEmpty() } ?: JsonArray(objects)
+        return JsonObject(obj + mapOf("keyPoints" to JsonArray(asText), "concepts" to concepts))
+    }
+}
 
 @Serializable
 data class SummarySection(
@@ -204,7 +240,45 @@ data class QuestionDraft(
 )
 
 @Serializable
-data class QuizDraft(val questions: List<QuestionDraft> = emptyList())
+data class QuizDraft(@Serializable(with = LenientQuestionList::class) val questions: List<QuestionDraft> = emptyList())
+
+/**
+ * Small models name question types loosely ("pairs", "mcq", "true/false"). Known synonyms are mapped to the real
+ * type and a question that still cannot be read is dropped on its own instead of failing the whole quiz.
+ */
+object LenientQuestionList : KSerializer<List<QuestionDraft>> {
+    private val delegate = ListSerializer(QuestionDraft.serializer())
+    override val descriptor: SerialDescriptor = delegate.descriptor
+
+    private val synonyms = mapOf(
+        "mcq" to "multiple_choice", "multiple" to "multiple_choice", "multiplechoice" to "multiple_choice", "choice" to "multiple_choice",
+        "true_or_false" to "true_false", "truefalse" to "true_false", "tf" to "true_false", "boolean" to "true_false",
+        "fill_in_the_blank" to "fill_blank", "fill_in_blank" to "fill_blank", "fill_blanks" to "fill_blank", "fill" to "fill_blank", "cloze" to "fill_blank",
+        "short" to "short_answer", "open" to "open_ended", "open_question" to "open_ended", "essay" to "open_ended",
+        "definition" to "define_concept", "define" to "define_concept",
+        "match" to "matching", "pairs" to "matching", "pair" to "matching", "matching_pairs" to "matching",
+        "order" to "ordering", "sequence" to "ordering", "sort" to "ordering",
+        "explain" to "explain_own_words", "own_words" to "explain_own_words", "real_world" to "real_life", "application" to "real_life",
+    )
+
+    fun normalizeType(raw: String): String {
+        val key = raw.trim().lowercase().replace(Regex("[\\s/-]+"), "_")
+        return synonyms[key] ?: key
+    }
+
+    override fun deserialize(decoder: Decoder): List<QuestionDraft> {
+        val input = decoder as? JsonDecoder ?: return delegate.deserialize(decoder)
+        val array = input.decodeJsonElement() as? JsonArray ?: return emptyList()
+        return array.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val type = (obj["type"] as? JsonPrimitive)?.contentOrNull?.let(::normalizeType)
+            val fixed = if (type == null) obj else JsonObject(obj + ("type" to JsonPrimitive(type)))
+            runCatching { input.json.decodeFromJsonElement(QuestionDraft.serializer(), fixed) }.getOrNull()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<QuestionDraft>) = delegate.serialize(encoder, value)
+}
 
 @Serializable
 data class TeachTurn(

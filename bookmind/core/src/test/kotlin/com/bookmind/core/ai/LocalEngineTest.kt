@@ -112,4 +112,12 @@ class LocalEngineTest {
         assertTrue(links.links.any { it.fromConcept == "Bilişsel yük" && it.relation == "same_concept" })
         assertTrue(links.links.all { it.confidence <= 0.7 })
     }
+
+    @Test fun `verb forms that repeat in a chapter are not taken for concepts`() {
+        val engine = LocalHeuristicEngine()
+        val titles = MarkdownParser.parse(TestFixtures.demoBookMarkdown).chapters.flatMap { ch -> engine.extractConcepts(ch.text).map { it.title.lowercase() } }
+        println(titles)
+        listOf("öğrenilen", "kullanılabilmesidir", "öğrenilmiş").forEach { bad -> assertTrue(titles.none { it.startsWith(bad) }, "$bad in $titles") }
+        assertTrue(titles.any { it.startsWith("transfer") } && titles.any { it.startsWith("aralıklı tekrar") }, titles.toString())
+    }
 }
