@@ -162,7 +162,7 @@ fun AskScreen(bookId: String, onBack: () -> Unit, onOpenChapter: (String) -> Uni
                                 WarningBanner(ex.warnings)
                                 if (ex.sources.isNotEmpty()) {
                                     Text(stringResource(R.string.ask_sources), style = MaterialTheme.typography.labelSmall, color = cs.primary, modifier = Modifier.padding(top = 10.dp))
-                                    ex.sources.forEach { p ->
+                                    ex.sources.distinctBy { it.chapterIndex }.forEach { p ->
                                         Row(
                                             Modifier.padding(top = 6.dp).clip(CircleShape).background(cs.surfaceContainerHigh)
                                                 .clickable { onOpenChapter(BookProcessor.chapterId(bookId, p.chapterIndex)) }.padding(horizontal = 10.dp, vertical = 6.dp),

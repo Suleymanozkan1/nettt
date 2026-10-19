@@ -142,6 +142,16 @@ Model özetinden:
 
 > This chapter introduces the forgetting curve, which shows how quickly learned material decays over time. Hermann Ebbinghaus first documented this by observing that most information learned quickly is lost shortly after initial study. The rate at which information fades is not constant; it is influenced by the material's relevance, how well it connects to prior knowledge, and its emotional impact. The key takeaway is that to combat this natural decay, strategic review is essential. The forgetting curve models the rapid loss of learned information. Forgetting rates depend on information meaning,…
 
+### Android'de uçtan uca (CI emülatörü)
+
+Her push'ta GitHub Actions'taki Android emülatörü (API 34, x86_64, 4 GB RAM) **release APK** ile şunu yapar
+(`scripts/android-smoke.sh`, `AI_SMOKE=1`): onboarding → Profil → Yapay zekâ asistanı → telefona uygun model önerisi
+(4 GB → Qwen3 0.6B) → **uygulama içinden gerçek indirme** (Hugging Face, 614 MB, SHA-256 doğrulaması) → "Yapay zekâ
+hazır" → kitap → "Kitaba sor" → cevabın **telefondaki modelden** geldiğini gösteren "AI · Qwen3 0.6B" etiketi. Yani
+indirme, LiteRT-LM'in Android yerel kütüphanesi, R8 ile küçültülmüş sürüm ve tüm hat emülatörde doğrulanıyor.
+
+![Emülatörde indirme ve kitaba sor](emulator-ai.png)
+
 ### Qwen3 0.6B (hafif model, 3–4 GB RAM'li telefonlar), Türkçe kitap
 
 | Yöntem | Kelime | Kavram kapsamı (/5) | Tekrar (Jaccard ort.) | Kitapta olmayan sayı/isim | Doğrulanan alıntı | Süre |
@@ -248,8 +258,8 @@ Yerel LLM özetinden:
 
 ## 6. Sınırlamalar
 
-- Model indirme, motor ve tüm yapay zekâ hattı JVM'de gerçek modelle test edildi; ancak bu ortamda fiziksel Android
-  telefon olmadığı için **telefonda** çalıştırma (bellek, hız, ısınma) doğrulanmadı. Hız rakamları model kartından
+- Model indirme, motor ve tüm hat JVM'de gerçek modelle ve **Android emülatöründe** (release APK, Qwen3 0.6B) uçtan
+  uca doğrulandı; fiziksel bir telefonda (bellek baskısı, hız, ısınma) ve Gemma 4'ün telefonda çalışması denenmedi. Hız rakamları model kartından
   alınmıştır; bu sunucudaki 4 çekirdekli CPU ölçümleri telefondan yavaştır.
 - Model ilk kullanımda belleğe yüklenir (birkaç saniye); orta seviye telefonlarda bir bölüm analizi 30–90 sn sürebilir.
   Kitap işleme arka planda, bildirimle sürer.
