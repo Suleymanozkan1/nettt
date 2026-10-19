@@ -3,7 +3,7 @@
 # Drives the real UI through the accessibility tree: onboarding -> demo book is processed in the background
 # (WorkManager + Hilt worker, R8-minified) -> library -> quick summary. Fails on any crash in logcat.
 set -euo pipefail
-APK=${APK:-app-release.apk}
+APK=${APK:-app-x86_64-release.apk}
 PKG=com.bookmind.app
 OUT=${OUT:-test-results/bookmind-android}
 mkdir -p "$OUT"

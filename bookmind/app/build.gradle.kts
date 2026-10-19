@@ -71,6 +71,17 @@ android {
         }
     }
 
+    // MediaPipe (on-device LLM) and ML Kit OCR ship large native libraries for every CPU type. One APK per ABI keeps
+    // the phone download small (arm64-v8a covers practically all current phones); the universal APK runs everywhere.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+            isUniversalApk = true
+        }
+    }
+
     packaging {
         resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")
     }

@@ -1,21 +1,22 @@
 # Test raporu
 
-Tarih: 2026-10-18. Ortam: Linux, JDK 21, Android SDK 36, Robolectric 4.16 (API 35/32), PostgreSQL 16.15,
+Tarih: 2026-10-19. Ortam: Linux, JDK 21, Android SDK 36, Robolectric 4.16 (API 35/32), PostgreSQL 16.15,
 Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) her push'ta çalışır.
 
 ## Özet
 
 | Paket | Komut | Test | Sonuç |
 |---|---|---|---|
-| Core birim testleri | `./gradlew :core:test` | 90 | ✅ 90/90 |
-| Uygulama (Robolectric: Room, hat, depolar, senkron, Compose UI) | `./gradlew :app:testDebugUnitTest` | 35 | ✅ 35/35 |
+| Core birim testleri | `./gradlew :core:test` | 100 (+1 isteğe bağlı) | ✅ 100/100 |
+| Uygulama (Robolectric: Room, hat, depolar, senkron, Compose UI) | `./gradlew :app:testDebugUnitTest` | 36 (+4 isteğe bağlı) | ✅ 36/36 |
 | SQL migration + RLS | `bash scripts/test-supabase-sql.sh` | 9 senaryo grubu | ✅ |
 | Edge Functions | `deno test --allow-env tests/` (+ `deno check`) | 8 | ✅ 8/8 |
 | Android lint | `./gradlew :app:lintDebug` | — | ✅ 0 hata, 44 uyarı (aşağıda) |
-| Derleme | `assembleDebug`, `assembleRelease` (R8) | — | ✅ |
+| Derleme | `assembleDebug`, `assembleRelease` (R8, işlemci türü başına APK + evrensel) | — | ✅ arm64 release 50 MB, evrensel 111 MB |
+| Gerçek yerel model değerlendirmesi | `LocalModelEvaluationTest` (llama.cpp + Qwen2.5-1.5B) | 2 kitap | ✅ bkz. [FREE_AI.md](FREE_AI.md#4-değerlendirme) |
 | Emülatörde release APK duman testi | `scripts/android-smoke.sh` (CI, API 34) | 1 akış | bkz. "Cihaz testi" |
 
-## Birim testleri (core, 86)
+## Birim testleri (core, 100)
 
 | Sınıf | Adet | Kapsam |
 |---|---|---|
@@ -24,6 +25,8 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | `OutputLanguageTest` | 4 | İngilizce demo kitaptan İngilizce kavramlar; yerel özet, soru, öğretmen, notlandırma, plan, ayrıştırıcı yedek başlıkları ve kaynak etiketlerinin seçilen dili izlemesi; Türkçenin varsayılan kalması |
 | `ParsersTest` | 17 | Markdown bölümleri, satır içi biçim temizleme, TR/EN başlık tespiti ve içindekiler eleme, başlıksız metinde sentetik bölümler, PDF anahattı/başlık sayfaları/taranmış PDF (OCR gerekli)/tire birleştirme/tekrarlayan üst bilgi, cümle bölme (kısaltma, ondalık), parçalama ofsetleri, sihirli bayt tespiti, UTF-8 BOM ve Windows-1254, Türkçe büyük/küçük harf, dil tespiti, SHA-256, kaynak etiketi |
 | `EpubParserTest` | 5 | Meta veri, spine sırası, nav başlıkları, NCX/başlık geri düşmesi, iç içe öğe tekrarlamama, script temizliği, DRM reddi, eksik container, yol normalleştirme |
+| `FreeAiTest` | 10 | Yerel sunucu sağlayıcısı (OpenAI uyumlu istek, JSON modu, anahtarsız, maliyet 0), hata eşleme, model listesi, yalnızca özel ağ adresleri, cihaz içi sohbet şablonları, bağlam bütçesine göre kırpma, yerel model hatasında ücretli değil yerel yönteme düşme, BM25 (Türkçe ekler), çıkarımsal cevap, sadakat denetimi, TextRank kararlılığı ve tekrar engeli |
+| `LocalModelEvaluationTest` | 1 (isteğe bağlı) | Gerçek yerel modele karşı eski/yeni/LLM karşılaştırması; `BOOKMIND_LOCAL_LLM_URL` yoksa atlanır |
 | `AiPipelineTest` | 13 | JSON çıkarma (çit, metin, dize içi parantez, kesik), bozuk çıktı → InvalidOutput, enjeksiyon etiketlerinin etkisizleşmesi, geçersiz/belirsiz soruların ayıklanması, uydurma alıntının silinmesi, puan sıkıştırma, mock ile uçtan uca, önbellek, geçici hatada yeniden deneme, geçersiz JSON'da düzeltici deneme, kalıcı hatada yerel motora düşme, yeniden denenmeyen hatalar, kota/sağlayıcı yokken yerel motor, özet kaynak doğrulaması |
 | `LocalEngineTest` | 11 | Tanım kalıplarından kavramlar (5 bölümün hepsi), "denir" kalıbı, anahtar cümleler, üretilen soruların yapısal geçerliliği ve kendi anahtarıyla doğru cevaplanması, tohum determinizmi, sezgisel puanlama, kaynaklı ve etiketli özetler, özetin kaynağa göre kısalığı (telif), öğretmen akışı, tür tahmini, kitaplar arası bağlar |
 | `RemoteAiProviderTest` | 4 | Oturum jetonu gönderimi (sağlayıcı anahtarı yok), kullanım ayrıştırma, 429/401/5xx/HTML eşlemesi, ağ hatasının yeniden denenebilirliği, oturumsuz istek yapılmaması |
@@ -31,7 +34,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | `LearningTest` | 8 | Günlük hedef (yerel gün, gece yarısını geçen ve açık unutulan oturum), seri koruması, kaliteye dayalı XP/seviye/rozet, plan bütçesi + ön koşul sırası + kontrol noktası, kaçırılan günlerin kaydırılması ve uyarlama, hatırlatma (yerel saat, gün seçimi, tatil, akşam), yaz saati boşluğu ve saat dilimi değişimi, analitikte tanıma/hatırlama ayrımı ve az veri |
 | `SyncTest` | 7 | Supabase giriş/kayıt, upsert başlıkları, değişen satır sorgusu, HTTP hataları, LWW ve tombstone, tekrar durumu birleştirme |
 
-## Uygulama testleri (Robolectric, 35)
+## Uygulama testleri (Robolectric, 36)
 
 | Sınıf | Adet | Kapsam |
 |---|---|---|
@@ -39,7 +42,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | `PipelineTest` | 9 | Demo kitabın uçtan uca işlenmesi (5 bölüm, ≥10 kavram, kart sayısı), **tekrar çalıştırmada çoğalmama ve yarıda kalan bölümden devam**, silinen bölüm metninin analiz kaybetmeden yeniden çıkarılması, aynı kitabın iki kez eklenmesi, dosya içe aktarma doğrulamaları (çalıştırılabilir, boş, ZIP; reddedilende iz kalmaması), EPUB, AI zaman aşımında yerel motora düşme ve etiket, mock AI yolu, kitap silme ve tombstone |
 | `LearningFlowTest` | 12 | Tekrar kuyruğu (yeni kart sınırı, 4 gün sonra vade, kayıt, XP), unutma ve aynı gün geri gelme, tüm özet türleri + düzenleme, quiz oluşturma/puanlama/yanlışların kuyruğa girmesi/“sadece yanlışlar” modu, öğretmen oturumunun tamamlanması, hikâye etiketi, notun karta dönüşmesi, plan bütçesi ve kaydırma, kitaplar arası bağ, analitik (ölçüm/tahmin ayrımı), dışa aktarma ZIP içeriği ve tüm verinin silinmesi, hatırlatmanın yerel saatle planlanması ve iptali |
 | `SyncEngineTest` | 5 | Push: `user_id` gönderilmemesi, JSON boolean, dosya yükleme, FK sırası; pull: LWW (yeni uzak kazanır, eski uzak yerel düzenlemeyi ezmez), yerel profile sahiplik, **çekilen satırların geri gönderilmemesi**, sunucu zamanlı imleç + örtüşme; tetikleyicilerin tüm yazma yollarını (kademeli silme dahil) yakalaması; giriş anlık görüntüsünün FK sırası; hesapsız senkron yok |
-| `AppUiTest` (Hilt + Compose) | 6 | Onboarding → Bugün (hedef, hatırlatma, demo kitap), kütüphane → kitap → hızlı özet (yerel köken etiketi), günlük tekrar (cevabı göster → derecelendir → ilerleme + kayıt), quiz oluşturma ve başlatma, bildirim ayarının kaydı, boş kütüphane durumu ve elle giriş doğrulaması |
+| `AppUiTest` (Hilt + Compose) | 7 | "Kitaba sor": çevrimdışı, kaynaklı cevap; Onboarding → Bugün (hedef, hatırlatma, demo kitap), kütüphane → kitap → hızlı özet (yerel köken etiketi), günlük tekrar (cevabı göster → derecelendir → ilerleme + kayıt), quiz oluşturma ve başlatma, bildirim ayarının kaydı, boş kütüphane durumu ve elle giriş doğrulaması |
 
 ## SQL / RLS testleri (`supabase/tests/rls_test.sql`)
 

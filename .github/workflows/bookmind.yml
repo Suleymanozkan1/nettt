@@ -41,8 +41,8 @@ jobs:
         with:
           name: bookmind-apks
           path: |
-            bookmind/app/build/outputs/apk/debug/app-debug.apk
-            bookmind/app/build/outputs/apk/release/app-release.apk
+            bookmind/app/build/outputs/apk/debug/app-universal-debug.apk
+            bookmind/app/build/outputs/apk/release/*.apk
 
   supabase:
     name: Supabase schema, RLS and Edge Functions
@@ -89,7 +89,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           working-directory: bookmind
-          script: APK=apks/release/app-release.apk timeout 1200 bash scripts/android-smoke.sh
+          script: APK=apks/release/app-x86_64-release.apk timeout 1200 bash scripts/android-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: bookmind-emulator, path: bookmind/test-results, if-no-files-found: ignore }

@@ -98,12 +98,12 @@ Room şeması değişirse sunucu tablolarını yeniden üret:
 ## Test
 
 ```sh
-./gradlew :core:test                 # 90 birim testi (FSRS, ayrıştırıcılar, AI hattı, planlayıcı, senkron istemcisi)
-./gradlew :app:testDebugUnitTest     # 35 test (+3 isteğe bağlı ekran görüntüsü turu): Room/migration, işleme hattı, depolar, senkronizasyon, Compose UI (Robolectric + Hilt)
+./gradlew :core:test                 # 100 birim testi (FSRS, ayrıştırıcılar, AI hattı, yerel modeller, BM25, planlayıcı, senkron istemcisi)
+./gradlew :app:testDebugUnitTest     # 36 test (+4 isteğe bağlı ekran görüntüsü turu): Room/migration, işleme hattı, depolar, senkronizasyon, Compose UI (Robolectric + Hilt)
 ./gradlew :app:lintDebug
 bash scripts/test-supabase-sql.sh    # migration'lar + RLS testleri (PostgreSQL 16)
 (cd supabase/functions && deno test --allow-env tests/)   # Edge Function testleri
-APK=app-release.apk bash scripts/android-smoke.sh          # emülatörde release APK duman testi (CI'da çalışır)
+APK=app-x86_64-release.apk bash scripts/android-smoke.sh         # emülatörde release APK duman testi (CI'da çalışır)
 ```
 
 Sonuçlar ve kapsam: [docs/TEST_REPORT.md](docs/TEST_REPORT.md).
@@ -112,7 +112,8 @@ Sonuçlar ve kapsam: [docs/TEST_REPORT.md](docs/TEST_REPORT.md).
 
 ```sh
 ./gradlew :app:assembleDebug
-./gradlew :app:assembleRelease   # R8 küçültme + kaynak küçültme açık
+./gradlew :app:assembleRelease   # R8 küçültme + kaynak küçültme açık; işlemci türü başına APK:
+                                 # app-arm64-v8a-release.apk (telefonlar), app-universal-release.apk (her cihaz)
 ```
 
 Release derlemesi şu an **debug anahtarıyla** imzalanır (yerel denemeler için). Mağaza yayını için
