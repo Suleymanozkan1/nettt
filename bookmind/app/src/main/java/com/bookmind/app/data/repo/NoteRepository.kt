@@ -1,5 +1,6 @@
 package com.bookmind.app.data.repo
 
+import com.bookmind.app.data.settings.AppLanguage
 import com.bookmind.app.data.db.BookMindDatabase
 import com.bookmind.app.data.db.LearningItemType
 import com.bookmind.app.data.db.UserNoteEntity
@@ -54,7 +55,7 @@ class NoteRepository @Inject constructor(
     /** Turns a note into a review card: the highlight (or the first line) becomes the prompt, the note the answer. */
     suspend fun addToReview(note: UserNoteEntity) {
         val chapter = note.chapterId?.let { db.chapters().get(it) }
-        val prompt = note.highlight?.let { "Bu alıntıyla ilgili notunu hatırla:\n“${it.take(300)}”" } ?: note.content.lineSequence().first().take(200).let { "Notun: $it …" }
+        val prompt = note.highlight?.let { AppLanguage.text.rememberHighlight(it.take(300)) } ?: note.content.lineSequence().first().take(200).let { AppLanguage.text.yourNote(it) }
         reviews.ensureItem(
             bookId = note.bookId, type = LearningItemType.USER_NOTE, dedupeKey = "note:${note.id}", prompt = prompt, expected = note.content,
             explanation = null, sourceRefs = listOfNotNull(chapter?.let { SourceRef(it.orderIndex, it.title, it.pageStart) }).toJson(),

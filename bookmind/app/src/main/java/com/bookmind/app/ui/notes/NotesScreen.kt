@@ -1,33 +1,41 @@
 package com.bookmind.app.ui.notes
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,8 +45,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -49,15 +59,22 @@ import com.bookmind.app.R
 import com.bookmind.app.data.db.UserNoteEntity
 import com.bookmind.app.data.repo.LibraryRepository
 import com.bookmind.app.data.repo.NoteRepository
+import com.bookmind.app.ui.components.AppCard
 import com.bookmind.app.ui.components.BackTopBar
 import com.bookmind.app.ui.components.EmptyState
+import com.bookmind.app.ui.components.Gutter
+import com.bookmind.app.ui.components.IconBadge
+import com.bookmind.app.ui.components.PrimaryButton
+import com.bookmind.app.ui.components.SearchField
+import com.bookmind.app.ui.theme.QuoteStyle
+import com.bookmind.app.ui.theme.extended
 import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -77,32 +94,41 @@ fun NotesScreen(bookId: String?, onBack: () -> Unit, onEdit: (String, String?) -
     val books by vm.books.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
     val titles = books.associate { it.id to it.title }
+    val cs = MaterialTheme.colorScheme
+    val x = MaterialTheme.extended
     Scaffold(
+        containerColor = cs.background,
         topBar = { BackTopBar(stringResource(R.string.notes_title), onBack) },
         floatingActionButton = {
             val target = bookId ?: books.firstOrNull()?.id
-            if (target != null) FloatingActionButton({ onEdit(target, null) }) { Icon(Icons.Filled.Add, stringResource(R.string.add_note)) }
+            if (target != null) FloatingActionButton({ onEdit(target, null) }, containerColor = cs.primary, contentColor = cs.onPrimary, shape = MaterialTheme.shapes.large) {
+                Icon(Icons.Filled.Add, stringResource(R.string.add_note))
+            }
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            OutlinedTextField(query, { vm.query.value = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), leadingIcon = { Icon(Icons.Filled.Search, null) },
-                placeholder = { Text(stringResource(R.string.search_notes)) }, singleLine = true)
-            if (notes.isEmpty()) EmptyState(stringResource(R.string.notes_empty_title), stringResource(R.string.notes_empty_body))
-            LazyColumn(Modifier.fillMaxSize()) {
+            SearchField(query, { vm.query.value = it }, stringResource(R.string.search_notes), Modifier.padding(horizontal = Gutter, vertical = 4.dp))
+            if (notes.isEmpty()) EmptyState(stringResource(R.string.notes_empty_title), stringResource(R.string.notes_empty_body), icon = Icons.AutoMirrored.Filled.StickyNote2)
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = Gutter, end = Gutter, top = 12.dp, bottom = 96.dp)) {
                 items(notes, key = { it.id }) { n ->
-                    ListItem(
-                        headlineContent = { Text(n.content.ifBlank { n.highlight.orEmpty() }, maxLines = 3) },
-                        overlineContent = { Text(titles[n.bookId].orEmpty()) },
-                        supportingContent = { n.highlight?.takeIf { n.content.isNotBlank() }?.let { Text("“$it”", maxLines = 2, style = MaterialTheme.typography.bodySmall) } },
-                        trailingContent = {
-                            Row {
-                                IconButton({ vm.favorite(n) }) { Icon(if (n.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, stringResource(R.string.favorite)) }
-                                if (!n.inReviewQueue) IconButton({ vm.review(n) }) { Icon(Icons.Filled.Replay, stringResource(R.string.add_to_review)) }
-                                IconButton({ vm.delete(n) }) { Icon(Icons.Filled.Delete, stringResource(R.string.delete)) }
+                    AppCard(Modifier.fillMaxWidth().padding(bottom = 10.dp), onClick = { onEdit(n.bookId, n.id) }) {
+                        Text(titles[n.bookId].orEmpty().uppercase(com.bookmind.app.data.settings.AppLanguage.locale), style = MaterialTheme.typography.labelSmall, color = cs.primary,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        n.highlight?.takeIf { it.isNotBlank() }?.let {
+                            Row(Modifier.padding(top = 8.dp)) {
+                                Box(Modifier.width(3.dp).height(40.dp).clip(CircleShape).background(x.streak))
+                                Spacer(Modifier.width(10.dp))
+                                Text("“$it”", style = QuoteStyle, maxLines = 3, overflow = TextOverflow.Ellipsis, color = cs.onSurfaceVariant)
                             }
-                        },
-                        modifier = Modifier.clickable { onEdit(n.bookId, n.id) },
-                    )
+                        }
+                        if (n.content.isNotBlank()) Text(n.content, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+                        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
+                            IconButton({ vm.favorite(n) }) { Icon(if (n.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, stringResource(R.string.favorite),
+                                tint = if (n.isFavorite) cs.primary else cs.onSurfaceVariant) }
+                            if (!n.inReviewQueue) IconButton({ vm.review(n) }) { Icon(Icons.Filled.Replay, stringResource(R.string.add_to_review), tint = cs.onSurfaceVariant) }
+                            IconButton({ vm.delete(n) }) { Icon(Icons.Filled.Delete, stringResource(R.string.delete), tint = cs.onSurfaceVariant) }
+                        }
+                    }
                 }
             }
         }
@@ -127,15 +153,25 @@ fun NoteEditScreen(bookId: String, noteId: String?, chapterId: String?, highligh
     LaunchedEffect(noteId) {
         noteId?.let { vm.load(it) }?.let { n -> content = n.content; quote = n.highlight.orEmpty(); review = n.inReviewQueue; chapter = n.chapterId }
     }
-    Column(Modifier.fillMaxSize()) {
+    val fieldColors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = MaterialTheme.extended.card, focusedContainerColor = MaterialTheme.extended.card,
+        unfocusedBorderColor = MaterialTheme.extended.cardBorder)
+    Column(Modifier.fillMaxSize().imePadding()) {
         BackTopBar(stringResource(if (noteId == null) R.string.add_note else R.string.edit_note), onDone)
-        Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-            OutlinedTextField(quote, { quote = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.highlight)) })
-            OutlinedTextField(content, { content = it }, Modifier.fillMaxWidth().heightIn(min = 160.dp).padding(top = 8.dp), label = { Text(stringResource(R.string.note_text)) })
-            Row(Modifier.fillMaxWidth().toggleable(review, role = Role.Checkbox) { review = it }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(review, null); Text(stringResource(R.string.add_to_review))
+        Column(Modifier.weight(1f).padding(horizontal = Gutter).verticalScroll(rememberScrollState())) {
+            OutlinedTextField(quote, { quote = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.highlight)) }, shape = MaterialTheme.shapes.large,
+                textStyle = QuoteStyle, colors = fieldColors)
+            OutlinedTextField(content, { content = it }, Modifier.fillMaxWidth().heightIn(min = 180.dp).padding(top = 12.dp), label = { Text(stringResource(R.string.note_text)) },
+                shape = MaterialTheme.shapes.large, colors = fieldColors)
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Row(Modifier.fillMaxWidth().toggleable(review, role = Role.Switch) { review = it }, verticalAlignment = Alignment.CenterVertically) {
+                    IconBadge(Icons.Filled.Replay, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer, size = 34.dp, iconSize = 18.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(stringResource(R.string.add_to_review), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Switch(review, null)
+                }
             }
-            Button({ vm.save(noteId, bookId, chapter, content, quote, review, onDone) }, enabled = content.isNotBlank() || quote.isNotBlank()) { Text(stringResource(R.string.save)) }
         }
+        PrimaryButton(stringResource(R.string.save), { vm.save(noteId, bookId, chapter, content, quote, review, onDone) }, Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 12.dp),
+            enabled = content.isNotBlank() || quote.isNotBlank())
     }
 }

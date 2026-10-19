@@ -1,5 +1,7 @@
 package com.bookmind.core.text
 
+import com.bookmind.core.i18n.CoreText
+
 /**
  * Builds chapters from per-page PDF text. Uses the PDF outline (bookmarks) when present, otherwise heading
  * detection on page text, otherwise groups pages into sections. Page numbers are 1-based.
@@ -10,12 +12,13 @@ object PdfStructureBuilder {
     /** Minimum average characters per page below which the PDF is treated as scanned (needs OCR). */
     const val SCANNED_CHARS_PER_PAGE = 40
 
-    fun build(pages: List<String>, outline: List<OutlineEntry>, pagesPerSection: Int = 15): ExtractedBook {
+    fun build(pages: List<String>, outline: List<OutlineEntry>, pagesPerSection: Int = 15, lang: String? = null): ExtractedBook {
+        val t = CoreText.of(lang)
         val cleaned = pages.map { TextNormalizer.unwrapPdfLines(stripRunningHeaders(it, pages)) }
         val totalChars = cleaned.sumOf { it.length }
         val needsOcr = pages.isNotEmpty() && totalChars / pages.size < SCANNED_CHARS_PER_PAGE
         if (needsOcr) {
-            return ExtractedBook(null, null, null, emptyList(), listOf("PDF taranmış görünüyor; metin çıkarmak için OCR gerekli."), needsOcr = true)
+            return ExtractedBook(null, null, null, emptyList(), listOf(t.pdfScanned), needsOcr = true)
         }
         val language = LanguageDetector.detect(cleaned.joinToString("\n"))
 
@@ -29,31 +32,31 @@ object PdfStructureBuilder {
             val chapters = mutableListOf<ExtractedChapter>()
             if (starts.first().pageIndex > 0) {
                 val front = cleaned.subList(0, starts.first().pageIndex).joinToString("\n\n").trim()
-                if (TextNormalizer.wordCount(front) >= 150) chapters += chapter("Başlangıç", cleaned, 0, starts.first().pageIndex - 1)
+                if (TextNormalizer.wordCount(front) >= 150) chapters += chapter(t.opening, cleaned, 0, starts.first().pageIndex - 1, t)
             }
             for ((i, s) in starts.withIndex()) {
                 val endPage = (starts.getOrNull(i + 1)?.pageIndex ?: pages.size) - 1
                 if (endPage < s.pageIndex) continue
-                chapter(s.title.trim(), cleaned, s.pageIndex, endPage).takeIf { it.text.isNotBlank() }?.let { chapters += it }
+                chapter(s.title.trim(), cleaned, s.pageIndex, endPage, t).takeIf { it.text.isNotBlank() }?.let { chapters += it }
             }
             return ExtractedBook(null, null, language, chapters)
         }
 
         val chapters = cleaned.indices.chunked(pagesPerSection).map { range ->
-            chapter("Sayfa ${range.first() + 1}–${range.last() + 1}", cleaned, range.first(), range.last())
+            chapter(t.pages(range.first() + 1, range.last() + 1), cleaned, range.first(), range.last(), t)
         }.filter { it.text.isNotBlank() }
         return ExtractedBook(
             null, null, language, chapters,
-            warnings = listOf("PDF içinde içindekiler/başlık bulunamadı; sayfalar gruplandı."),
+            warnings = listOf(t.pdfNoOutline),
             syntheticChapters = true,
         )
     }
 
-    private fun chapter(title: String, pages: List<String>, from: Int, to: Int) = ExtractedChapter(
+    private fun chapter(title: String, pages: List<String>, from: Int, to: Int, t: CoreText) = ExtractedChapter(
         title = title,
         text = pages.subList(from, to + 1).joinToString("\n\n").trim(),
-        startLocation = "s. ${from + 1}",
-        endLocation = "s. ${to + 1}",
+        startLocation = t.page(from + 1),
+        endLocation = t.page(to + 1),
         pageStart = from + 1,
         pageEnd = to + 1,
     )

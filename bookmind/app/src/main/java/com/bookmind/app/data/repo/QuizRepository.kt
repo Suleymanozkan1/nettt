@@ -1,5 +1,6 @@
 package com.bookmind.app.data.repo
 
+import com.bookmind.app.data.settings.AppLanguage
 import androidx.room.withTransaction
 import com.bookmind.app.data.db.AttemptSummary
 import com.bookmind.app.data.db.BookMindDatabase
@@ -122,10 +123,10 @@ class QuizRepository @Inject constructor(
     }
 
     private fun title(bookTitle: String, c: QuizConfig) = when (c.mode) {
-        QuizMode.WRONG_ONLY -> "$bookTitle – yanlışlar"
-        QuizMode.NEAR_FORGETTING -> "$bookTitle – unutulmaya yakın"
-        QuizMode.MIXED_REVIEW -> "$bookTitle – karışık tekrar"
-        QuizMode.FULL_BOOK -> "$bookTitle – tüm kitap"
+        QuizMode.WRONG_ONLY -> "$bookTitle – " + AppLanguage.text.quizWrongOnly
+        QuizMode.NEAR_FORGETTING -> "$bookTitle – " + AppLanguage.text.quizNearForgetting
+        QuizMode.MIXED_REVIEW -> "$bookTitle – " + AppLanguage.text.quizMixed
+        QuizMode.FULL_BOOK -> "$bookTitle – " + AppLanguage.text.quizFullBook
         QuizMode.STANDARD -> bookTitle
     }
 
@@ -153,13 +154,13 @@ class QuizRepository @Inject constructor(
         val quiz = db.quizzes().quiz(attempt.quizId) ?: error("quiz")
         val book = db.books().get(quiz.bookId)
         val graded = if (QuizScorer.isObjective(q)) {
-            val s = QuizScorer.score(q, userAnswer)
-            Graded(s.score, s.correct, s.feedback, 1.0, emptyList(), QuizScorer.displayAnswer(q))
+            val s = QuizScorer.score(q, userAnswer, AppLanguage.tag)
+            Graded(s.score, s.correct, s.feedback, 1.0, emptyList(), QuizScorer.displayAnswer(q, AppLanguage.tag))
         } else {
             val excerpt = q.chapterIndex?.let { idx -> db.chapters().forBook(quiz.bookId).firstOrNull { it.orderIndex == idx } }?.let { files.readChapterText(it.textFile).take(6_000) }.orEmpty()
-            when (val r = ai.gradeOpenAnswer(q.prompt, q.answer, q.rubric, userAnswer, book?.language, excerpt, q.acceptableAnswers)) {
+            when (val r = ai.gradeOpenAnswer(q.prompt, q.answer, q.rubric, userAnswer, AppLanguage.tag, excerpt, q.acceptableAnswers)) {
                 is AiResult.Ok -> Graded(r.value.score, r.value.correct, r.value.feedback + (r.value.rationale.takeIf { it.isNotBlank() }?.let { "\n$it" } ?: ""), r.value.confidence, r.value.missingPoints, q.answer)
-                is AiResult.Failed -> Graded(0.0, false, "Değerlendirilemedi: ${r.error.message}", 0.0, emptyList(), q.answer)
+                is AiResult.Failed -> Graded(0.0, false, AppLanguage.text.couldNotGrade(AppLanguage.text.aiError(r.error)), 0.0, emptyList(), q.answer)
             }
         }
         val answer = QuizAnswerEntity(newId(), attemptId, question.id, userAnswer.take(4_000), graded.score, graded.correct, graded.feedback,
@@ -178,7 +179,7 @@ class QuizRepository @Inject constructor(
             reviews.ensureItem(
                 bookId = quiz.bookId, type = LearningItemType.WRONG_ANSWER,
                 dedupeKey = "wrong:${quiz.bookId}:${Checksums.sha256(q.prompt).take(16)}",
-                prompt = q.prompt, expected = QuizScorer.displayAnswer(q), explanation = q.explanation,
+                prompt = q.prompt, expected = QuizScorer.displayAnswer(q, AppLanguage.tag), explanation = q.explanation,
                 sourceRefs = question.sourceReferences, question = q.copy(needsReview = false), dueNow = true,
             )
         }

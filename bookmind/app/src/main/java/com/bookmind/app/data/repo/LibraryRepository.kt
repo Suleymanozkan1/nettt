@@ -1,5 +1,6 @@
 package com.bookmind.app.data.repo
 
+import com.bookmind.app.data.settings.AppLanguage
 import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
@@ -36,6 +37,12 @@ class LibraryRepository @Inject constructor(
     private val scheduler: WorkScheduler,
     private val clock: AppClock,
 ) {
+    companion object {
+        const val DEMO_AUTHOR = "BookMind (demo, CC0)"
+        fun demoBook(lang: String) =
+            if (lang == "en") "demo/science_of_learning.md" to "The Science of Learning" else "demo/ogrenmenin_bilimi.md" to "Öğrenmenin Bilimi"
+    }
+
     fun books(query: String = ""): Flow<List<BookEntity>> = flow { emit(users.userId()) }.flatMapLatest { uid ->
         if (query.isBlank()) db.books().observeAll(uid) else db.books().search(uid, query.trim())
     }
@@ -55,23 +62,24 @@ class LibraryRepository @Inject constructor(
             files.deleteBook(bookId)
             throw e
         }
-        val title = imported.originalName?.substringBeforeLast('.')?.replace('_', ' ')?.trim()?.ifBlank { null } ?: "Adsız kitap"
+        val title = imported.originalName?.substringBeforeLast('.')?.replace('_', ' ')?.trim()?.ifBlank { null } ?: AppLanguage.text.untitledBook
         register(bookId, title, null, imported, isDemo = false)
     }
 
     suspend fun importText(title: String, author: String?, text: String, markdown: Boolean, isDemo: Boolean = false): String = withContext(Dispatchers.IO) {
         require(title.isNotBlank()) { "title" }
-        if (text.trim().length < 200) throw ImportException(ImportException.Reason.NO_TEXT, "metin çok kısa")
+        if (text.trim().length < 200) throw ImportException(ImportException.Reason.NO_TEXT, "text too short")
         val bookId = newId()
         val imported = files.importText(text, bookId, markdown)
         register(bookId, title.trim(), author?.trim()?.ifBlank { null }, imported, isDemo)
     }
 
-    /** Adds the bundled, original CC0 demo book ("Öğrenmenin Bilimi"). */
+    /** Adds the bundled, original CC0 demo book in the app language ("Öğrenmenin Bilimi" / "The Science of Learning"). */
     suspend fun addDemoBook(): String {
-        val text = withContext(Dispatchers.IO) { context.assets.open("demo/ogrenmenin_bilimi.md").bufferedReader().use { it.readText() } }
+        val (asset, title) = demoBook(AppLanguage.tag)
+        val text = withContext(Dispatchers.IO) { context.assets.open(asset).bufferedReader().use { it.readText() } }
         return try {
-            importText("Öğrenmenin Bilimi", "BookMind (demo, CC0)", text, markdown = true, isDemo = true)
+            importText(title, DEMO_AUTHOR, text, markdown = true, isDemo = true)
         } catch (e: DuplicateBookException) {
             e.existingBookId
         }

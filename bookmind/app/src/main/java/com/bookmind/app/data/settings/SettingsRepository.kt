@@ -27,8 +27,8 @@ enum class SrsAlgorithm { FSRS, SM2 }
 data class AppSettings(
     val onboardingDone: Boolean = false,
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    /** "system", "tr" or "en". */
-    val language: String = "system",
+    /** "tr" (default) or "en"; see [AppLanguage]. */
+    val language: String = AppLanguage.DEFAULT,
     val aiMode: AiMode = AiMode.LOCAL,
     val algorithm: SrsAlgorithm = SrsAlgorithm.FSRS,
     val desiredRetention: Float = 0.9f,
@@ -68,7 +68,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         AppSettings(
             onboardingDone = p[Keys.onboarding] ?: false,
             theme = p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
-            language = p[Keys.language] ?: "system",
+            language = AppLanguage.normalize(p[Keys.language]),
             aiMode = p[Keys.aiMode]?.let { runCatching { AiMode.valueOf(it) }.getOrNull() } ?: AiMode.LOCAL,
             algorithm = p[Keys.algorithm]?.let { runCatching { SrsAlgorithm.valueOf(it) }.getOrNull() } ?: SrsAlgorithm.FSRS,
             desiredRetention = (p[Keys.retention] ?: 0.9f).coerceIn(0.7f, 0.97f),
@@ -90,7 +90,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
                 AppSettings(
                     p[Keys.onboarding] ?: false,
                     p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
-                    p[Keys.language] ?: "system",
+                    AppLanguage.normalize(p[Keys.language]),
                     p[Keys.aiMode]?.let { runCatching { AiMode.valueOf(it) }.getOrNull() } ?: AiMode.LOCAL,
                     p[Keys.algorithm]?.let { runCatching { SrsAlgorithm.valueOf(it) }.getOrNull() } ?: SrsAlgorithm.FSRS,
                     p[Keys.retention] ?: 0.9f,
@@ -105,7 +105,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
             )
             p[Keys.onboarding] = s.onboardingDone
             p[Keys.theme] = s.theme.name
-            p[Keys.language] = s.language
+            p[Keys.language] = AppLanguage.normalize(s.language)
+            AppLanguage.tag = AppLanguage.normalize(s.language)
             p[Keys.aiMode] = s.aiMode.name
             p[Keys.algorithm] = s.algorithm.name
             p[Keys.retention] = s.desiredRetention.coerceIn(0.7f, 0.97f)
@@ -119,5 +120,11 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         }
     }
 
-    suspend fun clear() { store.edit { it.clear() } }
+    suspend fun clear() {
+        store.edit { it.clear() }
+        AppLanguage.tag = AppLanguage.DEFAULT
+    }
+
+    /** Loads the stored language into [AppLanguage]; called once at startup before any UI is shown. */
+    suspend fun loadLanguage(): String = current().language.also { AppLanguage.tag = it }
 }

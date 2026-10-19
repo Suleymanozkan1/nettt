@@ -1,5 +1,7 @@
 package com.bookmind.core.ai
 
+import com.bookmind.core.i18n.CoreText
+
 import com.bookmind.core.text.SourceRef
 import com.bookmind.core.text.TextNormalizer
 
@@ -27,7 +29,8 @@ object OutputValidator {
     fun limitQuote(quote: String?): String? =
         quote?.trim()?.takeIf { it.isNotEmpty() }?.let { if (it.length > SourceRef.MAX_QUOTE_CHARS) it.take(SourceRef.MAX_QUOTE_CHARS - 1) + "…" else it }
 
-    fun chapterAnalysis(a: ChapterAnalysis, chapterText: String): Validated<ChapterAnalysis> {
+    fun chapterAnalysis(a: ChapterAnalysis, chapterText: String, lang: String? = null): Validated<ChapterAnalysis> {
+        val t = CoreText.of(lang)
         val warnings = mutableListOf<String>()
         val concepts = a.concepts
             .filter { it.title.isNotBlank() && it.explanation.isNotBlank() }
@@ -35,7 +38,7 @@ object OutputValidator {
             .map { c ->
                 val quote = limitQuote(c.quote)
                 val verified = quote != null && quoteOccursIn(quote, chapterText)
-                if (quote != null && !verified) warnings += "“${c.title}” için verilen alıntı kitapta bulunamadı; alıntı kaldırıldı."
+                if (quote != null && !verified) warnings += t.quoteRemoved(c.title)
                 c.copy(
                     title = c.title.trim().take(120),
                     explanation = c.explanation.trim().take(1_500),
@@ -44,21 +47,22 @@ object OutputValidator {
                     quote = if (verified) quote else null,
                 )
             }
-        if (a.summary.isBlank() && concepts.isEmpty()) throw AiException.InvalidOutput("bölüm analizi boş")
+        if (a.summary.isBlank() && concepts.isEmpty()) throw AiException.InvalidOutput("empty chapter analysis")
         return Validated(a.copy(concepts = concepts, summary = a.summary.trim()), warnings)
     }
 
-    fun summary(doc: SummaryDocument, chapterTexts: List<String>): Validated<SummaryDocument> {
+    fun summary(doc: SummaryDocument, chapterTexts: List<String>, lang: String? = null): Validated<SummaryDocument> {
+        val t = CoreText.of(lang)
         val warnings = mutableListOf<String>()
         fun checkRef(ref: SourceRef): SourceRef {
             val text = chapterTexts.getOrNull(ref.chapterIndex)
             if (text == null) {
-                warnings += "Kaynak bölüm ${ref.chapterIndex + 1} bulunamadı."
+                warnings += t.sourceChapterMissing(ref.chapterIndex + 1)
                 return ref.copy(verified = false, quote = null, pageStart = null, pageEnd = null)
             }
             val quote = limitQuote(ref.quote)
             val ok = quote == null || quoteOccursIn(quote, text)
-            if (!ok) warnings += "Bir alıntı kitapta doğrulanamadı."
+            if (!ok) warnings += t.quoteUnverified
             return ref.copy(quote = if (ok) quote else null, verified = ok)
         }
         val sections = doc.sections
@@ -69,50 +73,51 @@ object OutputValidator {
             val ids = m.nodes.map { it.id }.toSet()
             m.copy(edges = m.edges.filter { it.from in ids && it.to in ids && it.from != it.to })
         }
-        if (sections.isEmpty() && ideas.isEmpty() && (map?.nodes.isNullOrEmpty())) throw AiException.InvalidOutput("özet boş")
+        if (sections.isEmpty() && ideas.isEmpty() && (map?.nodes.isNullOrEmpty())) throw AiException.InvalidOutput("empty summary")
         return Validated(doc.copy(sections = sections, ideas = ideas, conceptMap = map), warnings.distinct())
     }
 
-    fun quiz(draft: QuizDraft, chapterTexts: List<String>): Validated<List<QuestionDraft>> {
+    fun quiz(draft: QuizDraft, chapterTexts: List<String>, lang: String? = null): Validated<List<QuestionDraft>> {
+        val t = CoreText.of(lang)
         val warnings = mutableListOf<String>()
         val result = mutableListOf<QuestionDraft>()
         for (q in draft.questions) {
             val issue = questionIssue(q)
-            if (issue != null) { warnings += "Soru atlandı: $issue"; continue }
+            if (issue != null) { warnings += t.questionSkipped(issue); continue }
             var question = q.copy(prompt = q.prompt.trim(), answer = q.answer.trim(), options = q.options.map { it.trim() })
             val chapterText = q.chapterIndex?.let { chapterTexts.getOrNull(it) }
             val quote = limitQuote(q.quote)
             if (quote != null && (chapterText == null || !quoteOccursIn(quote, chapterText))) {
                 question = question.copy(quote = null)
-                warnings += "Bir sorunun kaynak alıntısı doğrulanamadı."
+                warnings += t.questionQuoteUnverified
             } else question = question.copy(quote = quote)
             if (isAmbiguous(question)) question = question.copy(needsReview = true)
             result += question
         }
-        if (result.isEmpty()) throw AiException.InvalidOutput("geçerli soru yok")
+        if (result.isEmpty()) throw AiException.InvalidOutput("no valid questions")
         return Validated(result.distinctBy { norm(it.prompt) }, warnings.distinct())
     }
 
     /** Returns why a question is unusable, or null if it is structurally valid. */
     fun questionIssue(q: QuestionDraft): String? {
-        if (q.prompt.isBlank()) return "boş soru"
+        if (q.prompt.isBlank()) return "empty prompt"
         return when (q.type) {
             QuestionType.MULTIPLE_CHOICE, QuestionType.SCENARIO, QuestionType.REAL_LIFE, QuestionType.FIND_ERROR -> when {
-                q.options.size < 2 -> if (q.type == QuestionType.MULTIPLE_CHOICE) "en az iki seçenek gerekli" else null
-                q.options.none { norm(it) == norm(q.answer) } -> "cevap seçenekler arasında değil"
+                q.options.size < 2 -> if (q.type == QuestionType.MULTIPLE_CHOICE) "needs at least two options" else null
+                q.options.none { norm(it) == norm(q.answer) } -> "answer is not among the options"
                 else -> null
             }
-            QuestionType.TRUE_FALSE -> if (q.answer.lowercase() !in setOf("true", "false", "doğru", "yanlış")) "doğru/yanlış cevabı geçersiz" else null
+            QuestionType.TRUE_FALSE -> if (q.answer.lowercase() !in setOf("true", "false", "doğru", "yanlış")) "invalid true/false answer" else null
             QuestionType.FILL_BLANK -> when {
-                q.answer.isBlank() -> "boşluk cevabı yok"
-                !q.prompt.contains("___") -> "boşluk işareti yok"
+                q.answer.isBlank() -> "missing blank answer"
+                !q.prompt.contains("___") -> "missing blank marker"
                 else -> null
             }
-            QuestionType.MATCHING -> if (q.pairs.size < 2 || q.pairs.any { it.left.isBlank() || it.right.isBlank() }) "eşleştirme çiftleri eksik" else null
-            QuestionType.ORDERING -> if (q.answer.split('|').map { it.trim() }.filter { it.isNotEmpty() }.size < 2) "sıralama öğeleri eksik" else null
-            QuestionType.CALCULATION, QuestionType.SHORT_ANSWER -> if (q.answer.isBlank()) "cevap anahtarı yok" else null
+            QuestionType.MATCHING -> if (q.pairs.size < 2 || q.pairs.any { it.left.isBlank() || it.right.isBlank() }) "missing matching pairs" else null
+            QuestionType.ORDERING -> if (q.answer.split('|').map { it.trim() }.filter { it.isNotEmpty() }.size < 2) "missing ordering items" else null
+            QuestionType.CALCULATION, QuestionType.SHORT_ANSWER -> if (q.answer.isBlank()) "missing answer key" else null
             QuestionType.OPEN_ENDED, QuestionType.DEFINE_CONCEPT, QuestionType.EXPLAIN_OWN_WORDS ->
-                if (q.answer.isBlank() && q.rubric.isEmpty()) "değerlendirme ölçütü yok" else null
+                if (q.answer.isBlank() && q.rubric.isEmpty()) "missing rubric" else null
         }
     }
 
@@ -123,21 +128,21 @@ object OutputValidator {
         return q.needsReview || normalized.toSet().size != normalized.size || normalized.count { it == norm(q.answer) } > 1
     }
 
-    fun grade(g: GradeResult): GradeResult = g.copy(
+    fun grade(g: GradeResult, lang: String? = null): GradeResult = g.copy(
         score = if (g.score.isNaN()) 0.0 else g.score.coerceIn(0.0, 1.0),
         confidence = if (g.confidence.isNaN()) 0.0 else g.confidence.coerceIn(0.0, 1.0),
         correct = g.score >= 0.5,
-        feedback = g.feedback.ifBlank { if (g.score >= 0.5) "Cevabın genel olarak doğru." else "Cevap eksik veya hatalı." },
+        feedback = g.feedback.ifBlank { if (g.score >= 0.5) CoreText.of(lang).generallyCorrect else CoreText.of(lang).incompleteOrWrong },
     )
 
-    fun links(d: ConceptLinksDraft, known: Set<String>): Validated<List<ConceptLinkDraft>> {
+    fun links(d: ConceptLinksDraft, known: Set<String>, lang: String? = null): Validated<List<ConceptLinkDraft>> {
         val warnings = mutableListOf<String>()
         val knownNorm = known.associateBy(::norm)
         val links = d.links.mapNotNull { l ->
             val from = knownNorm[norm(l.fromConcept)]
             val to = knownNorm[norm(l.toConcept)]
             if (from == null || to == null || from == to) {
-                warnings += "Bilinmeyen kavramlara dayanan bir ilişki atlandı."
+                warnings += CoreText.of(lang).unknownLinkSkipped
                 null
             } else l.copy(fromConcept = from, toConcept = to, confidence = l.confidence.coerceIn(0.0, 1.0))
         }

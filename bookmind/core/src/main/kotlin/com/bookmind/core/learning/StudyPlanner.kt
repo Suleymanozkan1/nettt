@@ -1,5 +1,6 @@
 package com.bookmind.core.learning
 
+import com.bookmind.core.i18n.CoreText
 import java.time.LocalDate
 
 /**
@@ -17,7 +18,8 @@ object StudyPlanner {
     /** Average reading/learning speed used for estimates (words per minute, including note taking). */
     const val STUDY_WPM = 120
 
-    fun build(chapters: List<ChapterInfo>, dailyMinutes: Int, start: LocalDate, reviewMinutes: Int = 5): List<PlanTask> {
+    fun build(chapters: List<ChapterInfo>, dailyMinutes: Int, start: LocalDate, reviewMinutes: Int = 5, lang: String? = null): List<PlanTask> {
+        val t = CoreText.of(lang)
         require(dailyMinutes in 5..240) { "dailyMinutes must be 5..240" }
         val ordered = orderByPrerequisites(chapters)
         val tasks = mutableListOf<PlanTask>()
@@ -41,15 +43,15 @@ object StudyPlanner {
 
         for ((i, ch) in ordered.withIndex()) {
             // From the second day on, every day starts with a short review of what was learned so far.
-            if (i > 0 && used == 0) place(TaskType.REVIEW, null, minOf(reviewMinutes, dailyMinutes / 3).coerceAtLeast(3), "Günlük tekrar")
+            if (i > 0 && used == 0) place(TaskType.REVIEW, null, minOf(reviewMinutes, dailyMinutes / 3).coerceAtLeast(3), t.dailyReview)
             val learnMinutes = (ch.words / STUDY_WPM).coerceIn(5, 90)
-            place(TaskType.LEARN_CHAPTER, ch.index, learnMinutes, "Öğren: ${ch.title}")
-            place(TaskType.QUIZ, ch.index, (2 + ch.conceptCount / 2).coerceIn(3, 10), "Quiz: ${ch.title}")
+            place(TaskType.LEARN_CHAPTER, ch.index, learnMinutes, t.learn(ch.title))
+            place(TaskType.QUIZ, ch.index, (2 + ch.conceptCount / 2).coerceIn(3, 10), t.quiz(ch.title))
             if ((i + 1) % 3 == 0 || i == ordered.lastIndex) {
-                place(TaskType.CHECKPOINT, null, 10, if (i == ordered.lastIndex) "Kitap sonu kontrol noktası" else "Kontrol noktası")
+                place(TaskType.CHECKPOINT, null, 10, if (i == ordered.lastIndex) t.finalCheckpoint else t.checkpoint)
             }
         }
-        place(TaskType.PRACTICE, null, 10, "Gerçek hayatta uygulama görevi")
+        place(TaskType.PRACTICE, null, 10, t.practiceTask)
         return tasks
     }
 
@@ -92,11 +94,11 @@ object StudyPlanner {
     }
 
     /** Adapts the next days: weak chapters (low quiz accuracy) get an extra review task. */
-    fun adapt(tasks: List<PlanTask>, chapterAccuracy: Map<Int, Double>, today: LocalDate): List<PlanTask> {
+    fun adapt(tasks: List<PlanTask>, chapterAccuracy: Map<Int, Double>, today: LocalDate, lang: String? = null): List<PlanTask> {
         val weak = chapterAccuracy.filter { it.value < 0.6 }.keys
         if (weak.isEmpty()) return tasks
         val alreadyPlanned = tasks.filter { it.type == TaskType.REVIEW && it.chapterIndex in weak && it.day >= today && !it.done }.mapNotNull { it.chapterIndex }.toSet()
-        val extra = (weak - alreadyPlanned).map { PlanTask(today.plusDays(1), TaskType.REVIEW, it, 5, "Zorlandığın bölümü tekrar et") }
+        val extra = (weak - alreadyPlanned).map { PlanTask(today.plusDays(1), TaskType.REVIEW, it, 5, CoreText.of(lang).reviewWeakChapter) }
         return (tasks + extra).sortedWith(compareBy({ it.day }, { it.type.ordinal }))
     }
 }

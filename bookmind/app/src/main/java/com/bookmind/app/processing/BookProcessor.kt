@@ -1,5 +1,6 @@
 package com.bookmind.app.processing
 
+import com.bookmind.app.data.settings.AppLanguage
 import androidx.room.withTransaction
 import com.bookmind.app.data.db.BookEntity
 import com.bookmind.app.data.db.BookMindDatabase
@@ -72,7 +73,8 @@ class BookProcessor @Inject constructor(
             throw e
         } catch (e: ImportException) {
             val status = if (e.reason == ImportException.Reason.NO_TEXT) ProcessingStatus.NEEDS_OCR else ProcessingStatus.FAILED
-            db.books().setStatus(bookId, status, 0, e.reason.name + (e.message?.let { ": $it" } ?: ""), clock.now())
+            // The UI shows a localized message for the reason code.
+            db.books().setStatus(bookId, status, 0, e.reason.name, clock.now())
         } catch (e: Exception) {
             val hasChapters = db.chapters().forBook(bookId).isNotEmpty()
             db.books().setStatus(bookId, if (hasChapters) ProcessingStatus.PARTIAL else ProcessingStatus.FAILED, 0, e.javaClass.simpleName + ": " + (e.message ?: ""), clock.now())
@@ -81,7 +83,7 @@ class BookProcessor @Inject constructor(
 
     private suspend fun extract(book: BookEntity, useOcr: Boolean): List<ChapterEntity>? {
         db.books().setStatus(book.id, ProcessingStatus.EXTRACTING, 2, null, clock.now())
-        val source = db.sources().forBook(book.id) ?: throw ImportException(ImportException.Reason.UNREADABLE, "kaynak yok")
+        val source = db.sources().forBook(book.id) ?: throw ImportException(ImportException.Reason.UNREADABLE, "no source")
         val file = files.resolve(source.fileReference ?: throw ImportException(ImportException.Reason.UNREADABLE))
         val onProgress: (Int) -> Unit = { _ -> }
         val extracted = if (useOcr && book.sourceType == SourceType.PDF) extractor.ocrPdf(file, onProgress = onProgress) else extractor.extract(file, book.sourceType, onProgress)
@@ -89,7 +91,7 @@ class BookProcessor @Inject constructor(
             db.books().setStatus(book.id, ProcessingStatus.NEEDS_OCR, 0, extracted.warnings.joinToString("\n"), clock.now())
             return null
         }
-        if (extracted.chapters.isEmpty() || extracted.totalChars < 200) throw ImportException(ImportException.Reason.NO_TEXT, "okunabilir metin bulunamadı")
+        if (extracted.chapters.isEmpty() || extracted.totalChars < 200) throw ImportException(ImportException.Reason.NO_TEXT)
 
         val now = clock.now()
         val existing = db.chapters().forBook(book.id).associateBy { it.id }
@@ -144,7 +146,7 @@ class BookProcessor @Inject constructor(
 
         if (book.analysisJson == null) {
             db.books().setStatus(book.id, ProcessingStatus.ANALYZING, 22, null, clock.now())
-            when (val r = ai.analyzeBook(book.title, book.author, book.language, inputs)) {
+            when (val r = ai.analyzeBook(book.title, book.author, AppLanguage.tag, inputs)) {
                 is AiResult.Ok -> {
                     book = book.copy(
                         analysisJson = AppJson.encodeToString(BookAnalysis.serializer(), r.value),
@@ -159,7 +161,7 @@ class BookProcessor @Inject constructor(
             }
         }
         val genre = book.category?.let { runCatching { BookGenre.valueOf(it) }.getOrNull() } ?: BookGenre.INFORMATIONAL
-        val info = LearningAi.Book(book.title, book.author, book.language, genre)
+        val info = LearningAi.Book(book.title, book.author, AppLanguage.tag, genre)
         val userId = users.userId()
         var failures = 0
 
@@ -177,7 +179,7 @@ class BookProcessor @Inject constructor(
             }
         }
         val status = if (failures == 0) ProcessingStatus.READY else ProcessingStatus.PARTIAL
-        db.books().setStatus(book.id, status, 100, if (failures > 0) "$failures bölüm analiz edilemedi" else book.processingMessage, clock.now())
+        db.books().setStatus(book.id, status, 100, if (failures > 0) AppLanguage.text.chaptersFailed(failures) else book.processingMessage, clock.now())
     }
 
     private suspend fun analyzeChapter(book: BookEntity, info: LearningAi.Book, chapter: ChapterEntity, input: LocalHeuristicEngine.ChapterInput, userId: String) {
@@ -196,7 +198,6 @@ class BookProcessor @Inject constructor(
         val now = clock.now()
         val concepts = merged.concepts.take(MAX_CONCEPTS_PER_CHAPTER).map { c -> conceptEntity(book, chapter, c, generatedBy, now) }
         val isFiction = info.genre == BookGenre.FICTION
-        val lang = book.language ?: "tr"
 
         db.withTransaction {
             db.concepts().deleteGeneratedForChapter(chapter.id)
@@ -208,7 +209,7 @@ class BookProcessor @Inject constructor(
                     bookId = book.id,
                     conceptId = c.id,
                     itemType = if (isFiction) LearningItemType.CHARACTER_RELATION else LearningItemType.CONCEPT,
-                    prompt = if (lang == "en") "What is “${c.title}”? Explain in your own words." else "“${c.title}” nedir? Kendi cümlelerinle açıkla.",
+                    prompt = AppLanguage.text.whatIs(c.title),
                     expectedAnswer = c.explanation,
                     explanation = null,
                     sourceReferences = c.sourceReferences,

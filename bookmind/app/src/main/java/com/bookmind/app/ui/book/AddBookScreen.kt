@@ -3,33 +3,39 @@ package com.bookmind.app.ui.book
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -40,13 +46,23 @@ import com.bookmind.app.R
 import com.bookmind.app.data.files.ImportException
 import com.bookmind.app.data.repo.DuplicateBookException
 import com.bookmind.app.data.repo.LibraryRepository
+import com.bookmind.app.ui.components.AppCard
 import com.bookmind.app.ui.components.BackTopBar
+import com.bookmind.app.ui.components.ContentWidth
 import com.bookmind.app.ui.components.ErrorState
+import com.bookmind.app.ui.components.GhostButton
+import com.bookmind.app.ui.components.Gutter
+import com.bookmind.app.ui.components.HeroCard
+import com.bookmind.app.ui.components.ListRow
+import com.bookmind.app.ui.components.LoadingState
+import com.bookmind.app.ui.components.Pill
+import com.bookmind.app.ui.components.PrimaryButton
+import com.bookmind.app.ui.theme.extended
 import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 sealed interface AddState {
     data object Idle : AddState
@@ -94,53 +110,67 @@ fun AddBookScreen(onBack: () -> Unit, onAdded: (String) -> Unit, vm: AddBookView
     var title by remember { mutableStateOf("") }
     var author by remember { mutableStateOf("") }
     var text by remember { mutableStateOf("") }
+    var manual by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         // Read access is used once to copy the file into app storage; no persistent permission is kept.
         if (uri != null) vm.importFile(uri)
     }
-    (state as? AddState.Done)?.let { done -> androidx.compose.runtime.LaunchedEffect(done) { onAdded(done.bookId) } }
+    (state as? AddState.Done)?.let { done -> LaunchedEffect(done) { onAdded(done.bookId) } }
+    val cs = MaterialTheme.colorScheme
+    val x = MaterialTheme.extended
+    val working = state is AddState.Working
+    val fieldColors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = x.card, focusedContainerColor = x.card, unfocusedBorderColor = x.cardBorder)
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().imePadding()) {
         BackTopBar(stringResource(R.string.add_book), onBack)
-        Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
-            when (val s = state) {
-                AddState.Working -> { CircularProgressIndicator(); Text(stringResource(R.string.importing)) }
-                is AddState.Error -> {
-                    ErrorState(stringResource(s.messageRes), onRetry = { vm.reset() })
-                    s.existingBookId?.let { id -> OutlinedButton({ onAdded(id) }) { Text(stringResource(R.string.open_existing)) } }
+        ContentWidth(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Column(Modifier.padding(horizontal = Gutter)) {
+                when (val s = state) {
+                    AddState.Working -> LoadingState(message = stringResource(R.string.importing))
+                    is AddState.Error -> {
+                        ErrorState(stringResource(s.messageRes), onRetry = { vm.reset() })
+                        s.existingBookId?.let { id -> GhostButton(stringResource(R.string.open_existing), { onAdded(id) }, Modifier.fillMaxWidth()) }
+                    }
+                    else -> Unit
                 }
-                else -> Unit
-            }
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(stringResource(R.string.add_from_file), style = MaterialTheme.typography.titleMedium)
-                    Text(stringResource(R.string.add_from_file_hint), style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = { picker.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "text/markdown", "text/x-markdown", "application/octet-stream")) },
-                        enabled = state !is AddState.Working,
-                    ) { Icon(Icons.Filled.FileOpen, null); Text(" " + stringResource(R.string.choose_file)) }
+                // Primary path: a file.
+                HeroCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(22.dp)) {
+                        Icon(Icons.Filled.UploadFile, null, Modifier.size(36.dp))
+                        Text(stringResource(R.string.add_from_file), style = MaterialTheme.typography.headlineSmall, color = Color.White, modifier = Modifier.padding(top = 10.dp))
+                        Text(stringResource(R.string.add_from_file_hint), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(top = 4.dp))
+                        Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("PDF", "EPUB", "TXT", "MD").forEach { Pill(it, color = Color.White, container = Color.White.copy(alpha = 0.18f)) }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        com.bookmind.app.ui.components.HeroButton(stringResource(R.string.choose_file), {
+                            if (!working) picker.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "text/markdown", "text/x-markdown", "application/octet-stream"))
+                        }, icon = Icons.Filled.FileOpen)
+                    }
                 }
-            }
-            Spacer(Modifier.height(16.dp))
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(stringResource(R.string.add_manual), style = MaterialTheme.typography.titleMedium)
-                    Text(stringResource(R.string.add_manual_hint), style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.book_title)) }, singleLine = true)
-                    OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.book_author)) }, singleLine = true)
-                    OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 160.dp), label = { Text(stringResource(R.string.book_text)) })
-                    Spacer(Modifier.height(8.dp))
-                    Button({ vm.importText(title, author, text) }, enabled = title.isNotBlank() && text.length >= 200 && state !is AddState.Working) { Text(stringResource(R.string.save)) }
-                    if (text.isNotEmpty() && text.length < 200) Text(stringResource(R.string.text_too_short), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(12.dp))
+                AppCard(Modifier.fillMaxWidth()) {
+                    ListRow(stringResource(R.string.add_manual), subtitle = stringResource(R.string.add_manual_hint), icon = Icons.Filled.EditNote,
+                        iconTint = x.streak, iconContainer = x.warningContainer, onClick = { manual = !manual }) {
+                        Icon(if (manual) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, tint = cs.onSurfaceVariant)
+                    }
+                    if (manual) {
+                        Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.book_title)) }, singleLine = true, shape = MaterialTheme.shapes.medium, colors = fieldColors)
+                            OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.book_author)) }, singleLine = true, shape = MaterialTheme.shapes.medium, colors = fieldColors)
+                            OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 180.dp), label = { Text(stringResource(R.string.book_text)) }, shape = MaterialTheme.shapes.medium, colors = fieldColors)
+                            if (text.isNotEmpty() && text.length < 200) Text(stringResource(R.string.text_too_short), style = MaterialTheme.typography.bodySmall, color = cs.error)
+                            PrimaryButton(stringResource(R.string.save), { vm.importText(title, author, text) }, Modifier.fillMaxWidth(), enabled = title.isNotBlank() && text.length >= 200 && !working)
+                        }
+                    }
                 }
+                Spacer(Modifier.height(12.dp))
+                AppCard(Modifier.fillMaxWidth()) {
+                    ListRow(stringResource(R.string.add_demo), subtitle = stringResource(R.string.onb_add_demo_hint), icon = Icons.Filled.School,
+                        iconTint = x.success, iconContainer = x.successContainer, onClick = { if (!working) vm.demo() })
+                }
+                Text(stringResource(R.string.copyright_note), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, modifier = Modifier.padding(vertical = 20.dp))
             }
-            Spacer(Modifier.height(16.dp))
-            HorizontalDivider()
-            OutlinedButton({ vm.demo() }, Modifier.padding(top = 16.dp), enabled = state !is AddState.Working) {
-                Icon(Icons.Filled.School, null); Text(" " + stringResource(R.string.add_demo))
-            }
-            Text(stringResource(R.string.copyright_note), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 16.dp))
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.bookmind.core.text
 
+import com.bookmind.core.i18n.CoreText
+
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.parser.Parser
@@ -19,15 +21,16 @@ object EpubParser {
 
     class EpubException(message: String) : IOException(message)
 
-    fun parse(file: File): ExtractedBook = ZipFile(file).use { zip ->
+    fun parse(file: File, lang: String? = null): ExtractedBook = ZipFile(file).use { zip ->
+        val t = CoreText.of(lang)
         if (zip.getEntry("META-INF/encryption.xml") != null && hasEncryptedContent(zip)) {
-            throw EpubException("Bu EPUB DRM ile korunuyor; içe aktarılamaz.")
+            throw EpubException("EPUB is DRM-protected")
         }
-        val containerXml = zip.readText("META-INF/container.xml") ?: throw EpubException("container.xml bulunamadı")
+        val containerXml = zip.readText("META-INF/container.xml") ?: throw EpubException("container.xml not found")
         val opfPath = Jsoup.parse(containerXml, "", Parser.xmlParser()).selectFirst("rootfile")?.attr("full-path")
-            ?.takeIf { it.isNotBlank() } ?: throw EpubException("OPF yolu bulunamadı")
+            ?.takeIf { it.isNotBlank() } ?: throw EpubException("OPF path not found")
         val opfDir = opfPath.substringBeforeLast('/', "")
-        val opf = Jsoup.parse(zip.readText(opfPath) ?: throw EpubException("OPF okunamadı"), "", Parser.xmlParser())
+        val opf = Jsoup.parse(zip.readText(opfPath) ?: throw EpubException("OPF unreadable"), "", Parser.xmlParser())
 
         val title = opf.selectFirst("metadata > dc|title, metadata > title")?.text()?.trim()?.ifBlank { null }
         val author = opf.select("metadata > dc|creator, metadata > creator").joinToString(", ") { it.text().trim() }.ifBlank { null }
@@ -45,16 +48,16 @@ object EpubParser {
             val (href, mediaType) = manifest[itemref.attr("idref")] ?: continue
             if (!mediaType.contains("html")) continue
             val path = resolve(opfDir, href)
-            val html = zip.readText(path) ?: run { warnings += "Eksik içerik: $href"; null } ?: continue
+            val html = zip.readText(path) ?: run { warnings += t.epubMissing(href); null } ?: continue
             val doc = Jsoup.parse(html)
             val text = htmlToText(doc)
             if (TextNormalizer.wordCount(text) < 40) continue // cover, copyright, blank pages
             val chapterTitle = tocTitles[path] ?: doc.selectFirst("h1, h2, h3")?.text()?.trim()?.take(120)?.ifBlank { null }
                 ?: doc.title().trim().ifBlank { null }
-                ?: "Bölüm ${chapters.size + 1}"
+                ?: t.chapter(chapters.size + 1)
             chapters += ExtractedChapter(chapterTitle, text, startLocation = href.substringAfterLast('/'))
         }
-        if (chapters.isEmpty()) warnings += "EPUB içinde okunabilir metin bulunamadı."
+        if (chapters.isEmpty()) warnings += t.epubNoText
         ExtractedBook(title, author, language ?: LanguageDetector.detect(chapters.joinToString(" ") { it.text }), chapters, warnings)
     }
 
@@ -123,10 +126,10 @@ object EpubParser {
 
     private fun ZipFile.readText(name: String): String? {
         val entry = getEntry(name) ?: return null
-        if (entry.size > MAX_ENTRY_BYTES) throw EpubException("EPUB girdisi çok büyük: $name")
+        if (entry.size > MAX_ENTRY_BYTES) throw EpubException("EPUB entry too large: $name")
         return getInputStream(entry).use { input ->
             val bytes = input.readNBytesCompat(MAX_ENTRY_BYTES + 1)
-            if (bytes.size > MAX_ENTRY_BYTES) throw EpubException("EPUB girdisi çok büyük: $name")
+            if (bytes.size > MAX_ENTRY_BYTES) throw EpubException("EPUB entry too large: $name")
             String(bytes, Charsets.UTF_8)
         }
     }

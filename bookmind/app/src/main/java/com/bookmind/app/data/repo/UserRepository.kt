@@ -8,7 +8,6 @@ import com.bookmind.app.util.newId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,7 +27,7 @@ class UserRepository @Inject constructor(private val db: BookMindDatabase, priva
         val now = clock.now()
         val user = UserEntity(
             id = newId(),
-            language = if (Locale.getDefault().language == "tr") "tr" else "en",
+            language = com.bookmind.app.data.settings.AppLanguage.tag,
             timezone = clock.zone().id,
             dailyGoalMinutes = 15,
             createdAt = now,

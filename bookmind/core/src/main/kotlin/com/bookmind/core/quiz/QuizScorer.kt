@@ -2,6 +2,7 @@ package com.bookmind.core.quiz
 
 import com.bookmind.core.ai.QuestionDraft
 import com.bookmind.core.ai.QuestionType
+import com.bookmind.core.i18n.CoreText
 import com.bookmind.core.text.TextNormalizer
 
 /**
@@ -14,52 +15,55 @@ object QuizScorer {
     fun isObjective(q: QuestionDraft): Boolean =
         q.type.isObjective || (q.type == QuestionType.SHORT_ANSWER && q.answer.split(' ').size <= 3)
 
-    fun score(q: QuestionDraft, userAnswer: String): Score {
+    fun score(q: QuestionDraft, userAnswer: String, lang: String? = null): Score {
+        val t = CoreText.of(lang)
         val answer = userAnswer.trim()
         return when (q.type) {
             QuestionType.MULTIPLE_CHOICE, QuestionType.SCENARIO, QuestionType.REAL_LIFE, QuestionType.FIND_ERROR ->
-                if (q.options.isEmpty()) typed(q, answer) else binary(normalize(answer) == normalize(q.answer), q)
-            QuestionType.TRUE_FALSE -> binary(truthValue(answer) != null && truthValue(answer) == truthValue(q.answer), q)
-            QuestionType.FILL_BLANK, QuestionType.SHORT_ANSWER, QuestionType.CALCULATION -> typed(q, answer)
+                if (q.options.isEmpty()) typed(q, answer, t) else binary(normalize(answer) == normalize(q.answer), q, t)
+            QuestionType.TRUE_FALSE -> binary(truthValue(answer) != null && truthValue(answer) == truthValue(q.answer), q, t)
+            QuestionType.FILL_BLANK, QuestionType.SHORT_ANSWER, QuestionType.CALCULATION -> typed(q, answer, t)
             QuestionType.ORDERING -> {
                 val expected = splitList(q.answer)
                 val given = splitList(answer)
                 val positions = expected.indices.count { i -> given.getOrNull(i)?.let(::normalize) == normalize(expected[i]) }
                 val s = if (expected.isEmpty()) 0.0 else positions.toDouble() / expected.size
-                Score(s, s == 1.0, if (s == 1.0) "Sıralama doğru." else "Doğru sıra: ${expected.joinToString(" → ")}")
+                Score(s, s == 1.0, if (s == 1.0) t.orderCorrect else t.correctOrder(expected.joinToString(" → ")))
             }
             QuestionType.MATCHING -> {
                 // Answer format: "left=right" entries separated by " | ".
                 val given = splitList(answer).mapNotNull { e -> e.split('=', limit = 2).takeIf { it.size == 2 }?.let { normalize(it[0]) to normalize(it[1]) } }.toMap()
                 val right = q.pairs.count { p -> given[normalize(p.left)] == normalize(p.right) }
                 val s = if (q.pairs.isEmpty()) 0.0 else right.toDouble() / q.pairs.size
-                Score(s, s == 1.0, if (s == 1.0) "Tüm eşleştirmeler doğru." else "$right/${q.pairs.size} eşleştirme doğru.")
+                Score(s, s == 1.0, if (s == 1.0) t.allMatchesCorrect else t.matchesCorrect(right, q.pairs.size))
             }
             else -> throw IllegalArgumentException("${q.type} is graded by the open-answer evaluator")
         }
     }
 
-    private fun binary(ok: Boolean, q: QuestionDraft) = Score(if (ok) 1.0 else 0.0, ok, if (ok) "Doğru." else "Doğru cevap: ${displayAnswer(q)}")
+    private fun binary(ok: Boolean, q: QuestionDraft, t: CoreText) = Score(if (ok) 1.0 else 0.0, ok, if (ok) t.correct else t.correctAnswer(displayAnswer(q, t)))
 
-    private fun typed(q: QuestionDraft, answer: String): Score {
+    private fun typed(q: QuestionDraft, answer: String, t: CoreText): Score {
         val candidates = (listOf(q.answer) + q.acceptableAnswers).filter { it.isNotBlank() }
         val a = normalize(answer)
-        if (a.isEmpty()) return Score(0.0, false, "Cevap boş. Doğru cevap: ${q.answer}")
+        if (a.isEmpty()) return Score(0.0, false, t.emptyAnswer(q.answer))
         if (q.type == QuestionType.CALCULATION) {
             val num = a.replace(',', '.').toDoubleOrNull()
             val ok = candidates.any { c -> val e = normalize(c).replace(',', '.').toDoubleOrNull(); e != null && num != null && kotlin.math.abs(e - num) <= 1e-6 + kotlin.math.abs(e) * 0.001 }
-            if (ok) return Score(1.0, true, "Doğru.")
+            if (ok) return Score(1.0, true, t.correct)
         }
         val ok = candidates.any { c ->
             val n = normalize(c)
             // Turkish suffixes: "enflasyonun" for "enflasyon" is accepted when the root matches.
             n == a || (a.startsWith(n) && a.length - n.length <= 4 && n.length >= 4) || (n.length >= 5 && levenshtein(n, a) <= n.length / 6 + 1)
         }
-        return Score(if (ok) 1.0 else 0.0, ok, if (ok) "Doğru." else "Doğru cevap: ${q.answer}")
+        return Score(if (ok) 1.0 else 0.0, ok, if (ok) t.correct else t.correctAnswer(q.answer))
     }
 
-    fun displayAnswer(q: QuestionDraft): String = when (q.type) {
-        QuestionType.TRUE_FALSE -> if (truthValue(q.answer) == true) "Doğru" else "Yanlış"
+    fun displayAnswer(q: QuestionDraft, lang: String? = null): String = displayAnswer(q, CoreText.of(lang))
+
+    private fun displayAnswer(q: QuestionDraft, t: CoreText): String = when (q.type) {
+        QuestionType.TRUE_FALSE -> if (truthValue(q.answer) == true) t.trueWord else t.falseWord
         QuestionType.ORDERING -> splitList(q.answer).joinToString(" → ")
         QuestionType.MATCHING -> q.pairs.joinToString("; ") { "${it.left} → ${it.right}" }
         else -> q.answer

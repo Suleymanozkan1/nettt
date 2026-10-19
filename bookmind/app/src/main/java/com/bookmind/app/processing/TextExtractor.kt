@@ -1,5 +1,6 @@
 package com.bookmind.app.processing
 
+import com.bookmind.app.data.settings.AppLanguage
 import android.content.Context
 import androidx.core.graphics.createBitmap
 import android.graphics.Color
@@ -41,11 +42,11 @@ class TextExtractor @Inject constructor(@ApplicationContext private val context:
     suspend fun extract(file: File, type: SourceType, onProgress: (Int) -> Unit): ExtractedBook = withContext(Dispatchers.IO) {
         when (type) {
             SourceType.PDF -> extractPdf(file, onProgress)
-            SourceType.EPUB -> try { EpubParser.parse(file) } catch (e: EpubParser.EpubException) {
+            SourceType.EPUB -> try { EpubParser.parse(file, AppLanguage.tag) } catch (e: EpubParser.EpubException) {
                 if (e.message?.contains("DRM") == true) throw ImportException(ImportException.Reason.DRM, e.message) else throw e
             }
-            SourceType.MARKDOWN -> MarkdownParser.parse(FileTypeSniffer.decodeText(file.readBytes()))
-            SourceType.TXT, SourceType.MANUAL -> PlainTextParser.parse(FileTypeSniffer.decodeText(file.readBytes()))
+            SourceType.MARKDOWN -> MarkdownParser.parse(FileTypeSniffer.decodeText(file.readBytes()), AppLanguage.tag)
+            SourceType.TXT, SourceType.MANUAL -> PlainTextParser.parse(FileTypeSniffer.decodeText(file.readBytes()), AppLanguage.tag)
         }
     }
 
@@ -55,10 +56,10 @@ class TextExtractor @Inject constructor(@ApplicationContext private val context:
             // Temp-file backed buffers keep memory flat for large PDFs.
             PDDocument.load(file, MemoryUsageSetting.setupTempFileOnly())
         } catch (e: InvalidPasswordException) {
-            throw ImportException(ImportException.Reason.DRM, "PDF parola korumalı")
+            throw ImportException(ImportException.Reason.DRM, "password protected")
         }
         doc.use {
-            if (doc.isEncrypted && !doc.currentAccessPermission.canExtractContent()) throw ImportException(ImportException.Reason.DRM, "PDF metin çıkarmaya izin vermiyor")
+            if (doc.isEncrypted && !doc.currentAccessPermission.canExtractContent()) throw ImportException(ImportException.Reason.DRM, "extraction not permitted")
             val stripper = PDFTextStripper().apply { sortByPosition = true }
             val pageCount = doc.numberOfPages
             val pages = ArrayList<String>(pageCount)
@@ -81,7 +82,7 @@ class TextExtractor @Inject constructor(@ApplicationContext private val context:
             }
             doc.documentCatalog.documentOutline?.let { walk(it, 0) }
             val info = doc.documentInformation
-            return PdfStructureBuilder.build(pages, outline).copy(
+            return PdfStructureBuilder.build(pages, outline, lang = AppLanguage.tag).copy(
                 title = info?.title?.takeIf { it.isNotBlank() },
                 author = info?.author?.takeIf { it.isNotBlank() },
             )
@@ -115,10 +116,10 @@ class TextExtractor @Inject constructor(@ApplicationContext private val context:
                         }
                         onProgress((i + 1) * 100 / count)
                     }
-                    val book = PdfStructureBuilder.build(pages, emptyList())
-                    val warnings = book.warnings + listOf("Metin OCR ile çıkarıldı; tanıma hataları olabilir.") +
-                        (if (renderer.pageCount > maxPages) listOf("Yalnızca ilk $maxPages sayfa işlendi.") else emptyList())
-                    if (book.needsOcr || book.chapters.isEmpty()) throw ImportException(ImportException.Reason.NO_TEXT, "OCR metin bulamadı")
+                    val book = PdfStructureBuilder.build(pages, emptyList(), lang = AppLanguage.tag)
+                    val warnings = book.warnings + listOf(AppLanguage.text.ocrWarning) +
+                        (if (renderer.pageCount > maxPages) listOf(AppLanguage.text.onlyFirstPages(maxPages)) else emptyList())
+                    if (book.needsOcr || book.chapters.isEmpty()) throw ImportException(ImportException.Reason.NO_TEXT, "OCR found no text")
                     book.copy(warnings = warnings)
                 }
             }

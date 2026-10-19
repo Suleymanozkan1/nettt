@@ -1,5 +1,6 @@
 package com.bookmind.core.ai
 
+import com.bookmind.core.i18n.CoreText
 import com.bookmind.core.text.Sentences
 import com.bookmind.core.text.SourceRef
 import com.bookmind.core.text.TextNormalizer
@@ -211,10 +212,10 @@ class LocalHeuristicEngine {
 
     // ---------- Summaries ----------
 
-    fun summary(type: SummaryType, bookTitle: String, chapters: List<ChapterInput>, concepts: List<ConceptInput>, length: SummaryLength): SummaryDocument {
+    fun summary(type: SummaryType, bookTitle: String, chapters: List<ChapterInput>, concepts: List<ConceptInput>, length: SummaryLength, lang: String? = null): SummaryDocument {
+        val t = CoreText.of(lang)
         val perChapter = when (length) { SummaryLength.SHORT -> 1; SummaryLength.MEDIUM -> 2; SummaryLength.LONG -> 3 }
-        val note = "Bu içerik cihaz üzerinde, kitaptaki cümleler seçilerek oluşturuldu (yapay zekâ kullanılmadı). " +
-            "Yorumlayıcı bir özet için yapay zekâ sağlayıcısını etkinleştirin."
+        val note = t.localNote
         fun ref(ch: ChapterInput, s: Sentences.Span) = SourceRef(ch.index, ch.title, ch.pageStart, null, s.start, s.end, OutputValidator.limitQuote(s.text))
 
         return when (type) {
@@ -223,17 +224,17 @@ class LocalHeuristicEngine {
                     if (all.size <= 8) all else all.filterIndexed { i, _ -> i % ((all.size + 7) / 8) == 0 }
                 }
                 SummaryDocument(
-                    type, "$bookTitle – Hızlı özet",
+                    type, t.quickTitle(bookTitle),
                     sections = listOfNotNull(
-                        picks.firstOrNull()?.let { (ch, s) -> SummarySection("Temel fikir", s.text, sources = listOf(ref(ch, s))) },
-                        SummarySection("Öne çıkan noktalar", bullets = picks.drop(1).map { it.second.text }, sources = picks.drop(1).map { (ch, s) -> ref(ch, s) }),
-                        concepts.take(10).takeIf { it.isNotEmpty() }?.let { cs -> SummarySection("Temel kavramlar", bullets = cs.map { it.title }) },
+                        picks.firstOrNull()?.let { (ch, s) -> SummarySection(t.keyIdea, s.text, sources = listOf(ref(ch, s))) },
+                        SummarySection(t.highlights, bullets = picks.drop(1).map { it.second.text }, sources = picks.drop(1).map { (ch, s) -> ref(ch, s) }),
+                        concepts.take(10).takeIf { it.isNotEmpty() }?.let { cs -> SummarySection(t.keyConcepts, bullets = cs.map { it.title }) },
                     ),
                     notes = listOf(note),
                 )
             }
             SummaryType.DETAILED, SummaryType.CHAPTER, SummaryType.EXECUTIVE -> SummaryDocument(
-                type, if (type == SummaryType.CHAPTER) chapters.firstOrNull()?.title.orEmpty() else "$bookTitle – Bölüm özetleri",
+                type, if (type == SummaryType.CHAPTER) chapters.firstOrNull()?.title.orEmpty() else t.chapterSummariesTitle(bookTitle),
                 sections = chapters.map { ch ->
                     val ks = keySentences(ch.text, perChapter + if (type == SummaryType.CHAPTER) 1 else 0)
                     SummarySection(
@@ -243,10 +244,10 @@ class LocalHeuristicEngine {
                         sources = ks.map { ref(ch, it) },
                     )
                 }.filter { it.body.isNotBlank() },
-                notes = listOf(note) + if (type == SummaryType.EXECUTIVE) listOf("Yönetici özeti (problem, tez, çözüm, kanıt) yorum gerektirir; yerel modda bölüm özetleri gösteriliyor.") else emptyList(),
+                notes = listOf(note) + if (type == SummaryType.EXECUTIVE) listOf(t.executiveLocalNote) else emptyList(),
             )
             SummaryType.KEY_IDEAS -> SummaryDocument(
-                type, "$bookTitle – En önemli fikirler",
+                type, t.keyIdeasTitle(bookTitle),
                 ideas = concepts.take(12).map { c ->
                     val ch = chapters.firstOrNull { it.index == c.chapterIndex }
                     KeyIdea(idea = c.title, explanation = c.explanation, support = c.quote.orEmpty(), source = SourceRef(c.chapterIndex, ch?.title, quote = c.quote))
@@ -263,10 +264,10 @@ class LocalHeuristicEngine {
                     val sentences = Sentences.split(ch.text)
                     for (i in concepts.indices) for (j in i + 1 until concepts.size) {
                         val together = sentences.count { containsTerm(it.text, concepts[i].title) && containsTerm(it.text, concepts[j].title) }
-                        if (together >= 2 && edges.none { it.from == "c$i" && it.to == "c$j" }) edges += ConceptMapEdge("c$i", "c$j", "birlikte geçiyor", causal = false)
+                        if (together >= 2 && edges.none { it.from == "c$i" && it.to == "c$j" }) edges += ConceptMapEdge("c$i", "c$j", t.coOccurs, causal = false)
                     }
                 }
-                SummaryDocument(type, "$bookTitle – Kavram haritası", conceptMap = ConceptMap(nodes.filter { n -> n.id.startsWith("c") || nodes.any { it.parent == n.id } }, edges), notes = listOf(note, "Bağlantılar kavramların aynı cümlelerde birlikte geçmesine dayanır; neden-sonuç ilişkisi anlamına gelmez."))
+                SummaryDocument(type, t.conceptMapTitle(bookTitle), conceptMap = ConceptMap(nodes.filter { n -> n.id.startsWith("c") || nodes.any { it.parent == n.id } }, edges), notes = listOf(note, t.conceptMapNote))
             }
             SummaryType.CHAPTER_COMPARISON -> {
                 val stemsByChapter = chapters.associate { ch -> ch.index to concepts.filter { it.chapterIndex == ch.index }.map { it.title } }
@@ -275,22 +276,23 @@ class LocalHeuristicEngine {
                     if (b.index <= a.index) continue
                     val shared = (stemsByChapter[a.index].orEmpty()).filter { title -> containsTerm(b.text, title) } +
                         (stemsByChapter[b.index].orEmpty()).filter { title -> containsTerm(a.text, title) }
-                    if (shared.distinct().size >= 2) sections += SummarySection("${a.title} ↔ ${b.title}", "Bu bölümler ortak kavramlar üzerinde duruyor.", bullets = shared.distinct().take(6))
+                    if (shared.distinct().size >= 2) sections += SummarySection("${a.title} ↔ ${b.title}", t.sharedConceptsBody, bullets = shared.distinct().take(6))
                 }
-                SummaryDocument(type, "$bookTitle – Bölüm karşılaştırması", sections = sections.take(12).ifEmpty {
-                    listOf(SummarySection("Ortak kavram bulunamadı", "Bölümler arasında belirgin ortak kavram tespit edilmedi."))
-                }, notes = listOf(note, "Destekleme/çelişki ilişkisini belirlemek yorum gerektirir; yerel mod yalnızca ortak kavramları gösterir."))
+                SummaryDocument(type, t.comparisonTitle(bookTitle), sections = sections.take(12).ifEmpty {
+                    listOf(SummarySection(t.noSharedTitle, t.noSharedBody))
+                }, notes = listOf(note, t.comparisonNote))
             }
         }
     }
 
     // ---------- Questions ----------
 
-    fun quiz(concepts: List<ConceptInput>, chapters: List<ChapterInput>, count: Int, allowed: Set<QuestionType>, seed: Int = 1): List<QuestionDraft> {
+    fun quiz(concepts: List<ConceptInput>, chapters: List<ChapterInput>, count: Int, allowed: Set<QuestionType>, seed: Int = 1, lang: String? = null): List<QuestionDraft> {
+        val t = CoreText.of(lang)
         val rnd = java.util.Random(seed.toLong())
         val out = mutableListOf<QuestionDraft>()
         val pool = concepts.shuffledWith(rnd)
-        val masked = { c: ConceptInput -> maskTerm(c.explanation, c.title) }
+        val masked = { c: ConceptInput -> maskTerm(c.explanation, c.title, lang) }
         val chapterText = { i: Int -> chapters.firstOrNull { it.index == i }?.text.orEmpty() }
 
         fun sentenceWith(c: ConceptInput): Sentences.Span? =
@@ -310,13 +312,13 @@ class LocalHeuristicEngine {
                     QuestionType.MULTIPLE_CHOICE -> if (others.size >= 3) {
                         val correct = masked(c)
                         val options = (others.shuffledWith(rnd).take(3).map(masked) + correct).distinct().shuffledWith(rnd)
-                        QuestionDraft(type, "“${c.title}” için aşağıdakilerden hangisi kitaptaki açıklamaya uygundur?", options, correct,
-                            explanation = "Kitapta: ${c.explanation}", chapterIndex = c.chapterIndex, quote = c.quote, conceptTitle = c.title, difficulty = 2)
+                        QuestionDraft(type, t.mcqPrompt(c.title), options, correct,
+                            explanation = t.inBook(c.explanation), chapterIndex = c.chapterIndex, quote = c.quote, conceptTitle = c.title, difficulty = 2)
                     } else null
                     QuestionType.FILL_BLANK -> sentenceWith(c)?.let { s ->
                         val m = termRegex(c.title).find(s.text) ?: return@let null
                         QuestionDraft(type, s.text.replaceRange(m.range, "_____"), answer = m.value, acceptableAnswers = listOf(c.title),
-                            explanation = "Boşluğa “${m.value}” gelir.", chapterIndex = c.chapterIndex, quote = OutputValidator.limitQuote(s.text), conceptTitle = c.title, difficulty = 2)
+                            explanation = t.blankAnswer(m.value), chapterIndex = c.chapterIndex, quote = OutputValidator.limitQuote(s.text), conceptTitle = c.title, difficulty = 2)
                     }
                     QuestionType.TRUE_FALSE -> {
                         val s = sentenceWith(c)
@@ -324,13 +326,13 @@ class LocalHeuristicEngine {
                         if (s == null) null else if (swap != null && rnd.nextBoolean()) {
                             val m = termRegex(c.title).find(s.text)!!
                             QuestionDraft(type, s.text.replaceRange(m.range, swap.title.lowercase()), answer = "false",
-                                explanation = "Yanlış. Kitapta bu ifade “${c.title}” için geçiyor: ${s.text}", chapterIndex = c.chapterIndex, quote = OutputValidator.limitQuote(s.text), conceptTitle = c.title, difficulty = 3)
-                        } else QuestionDraft(type, s.text, answer = "true", explanation = "Doğru; bu ifade kitapta geçiyor.", chapterIndex = c.chapterIndex, quote = OutputValidator.limitQuote(s.text), conceptTitle = c.title, difficulty = 1)
+                                explanation = t.falseBecause(c.title, s.text), chapterIndex = c.chapterIndex, quote = OutputValidator.limitQuote(s.text), conceptTitle = c.title, difficulty = 3)
+                        } else QuestionDraft(type, s.text, answer = "true", explanation = t.trueInBook, chapterIndex = c.chapterIndex, quote = OutputValidator.limitQuote(s.text), conceptTitle = c.title, difficulty = 1)
                     }
-                    QuestionType.EXPLAIN_OWN_WORDS -> QuestionDraft(type, "“${c.title}” kavramını kendi cümlelerinle açıkla.", answer = c.explanation,
-                        rubric = keyPoints(c.explanation, c.title), explanation = "Kitaptaki açıklama: ${c.explanation}", chapterIndex = c.chapterIndex, quote = c.quote, conceptTitle = c.title, difficulty = 4)
-                    QuestionType.DEFINE_CONCEPT -> QuestionDraft(type, "Tanımla: ${c.title}", answer = c.explanation, rubric = keyPoints(c.explanation, c.title),
-                        explanation = "Kitaptaki açıklama: ${c.explanation}", chapterIndex = c.chapterIndex, quote = c.quote, conceptTitle = c.title, difficulty = 3)
+                    QuestionType.EXPLAIN_OWN_WORDS -> QuestionDraft(type, t.explainOwnWords(c.title), answer = c.explanation,
+                        rubric = keyPoints(c.explanation, c.title), explanation = t.bookExplanation(c.explanation), chapterIndex = c.chapterIndex, quote = c.quote, conceptTitle = c.title, difficulty = 4)
+                    QuestionType.DEFINE_CONCEPT -> QuestionDraft(type, t.define(c.title), answer = c.explanation, rubric = keyPoints(c.explanation, c.title),
+                        explanation = t.bookExplanation(c.explanation), chapterIndex = c.chapterIndex, quote = c.quote, conceptTitle = c.title, difficulty = 3)
                     else -> null
                 }
                 if (q != null && OutputValidator.questionIssue(q) == null && out.none { it.prompt == q.prompt }) out += q
@@ -339,14 +341,14 @@ class LocalHeuristicEngine {
         }
         if (QuestionType.MATCHING in allowed && pool.size >= 3 && out.size < count + 1) {
             val pairs = pool.take(4).map { MatchPair(it.title, masked(it).take(140)) }
-            out += QuestionDraft(QuestionType.MATCHING, "Kavramları açıklamalarıyla eşleştir.", pairs = pairs, answer = pairs.joinToString(" | ") { it.left },
+            out += QuestionDraft(QuestionType.MATCHING, t.matchPrompt, pairs = pairs, answer = pairs.joinToString(" | ") { it.left },
                 explanation = pairs.joinToString("\n") { "${it.left}: ${it.right}" }, chapterIndex = pool.first().chapterIndex, difficulty = 2)
         }
         if (QuestionType.ORDERING in allowed && out.size < count + 1) {
             chapters.firstOrNull { keySentences(it.text, 4).size == 4 }?.let { ch ->
                 val items = keySentences(ch.text, 4).map { it.text.take(140) }
-                out += QuestionDraft(QuestionType.ORDERING, "Bu ifadeleri “${ch.title}” bölümünde geçtikleri sıraya göre diz.",
-                    options = items.shuffledWith(rnd), answer = items.joinToString(" | "), explanation = "Doğru sıra kitaptaki akışı izler.", chapterIndex = ch.index, difficulty = 3)
+                out += QuestionDraft(QuestionType.ORDERING, t.orderPrompt(ch.title),
+                    options = items.shuffledWith(rnd), answer = items.joinToString(" | "), explanation = t.orderExplanation, chapterIndex = ch.index, difficulty = 3)
             }
         }
         return out.take(count)
@@ -354,7 +356,7 @@ class LocalHeuristicEngine {
 
     private fun <T> List<T>.shuffledWith(rnd: java.util.Random): List<T> = toMutableList().also { java.util.Collections.shuffle(it, rnd) }
 
-    fun maskTerm(text: String, term: String): String = termRegex(term).replace(text, "bu kavram").let {
+    fun maskTerm(text: String, term: String, lang: String? = null): String = termRegex(term).replace(text, CoreText.of(lang).thisConcept).let {
         if (it.length > 220) it.take(219) + "…" else it
     }
 
@@ -371,14 +373,15 @@ class LocalHeuristicEngine {
      * Keyword-coverage grading for open answers. It cannot judge reasoning, so confidence stays low and the
      * UI labels the result as approximate.
      */
-    fun grade(modelAnswer: String, rubric: List<String>, userAnswer: String, acceptable: List<String> = emptyList()): GradeResult {
+    fun grade(modelAnswer: String, rubric: List<String>, userAnswer: String, acceptable: List<String> = emptyList(), lang: String? = null): GradeResult {
+        val t = CoreText.of(lang)
         val answerStems = Lexicon.stems(userAnswer)
         val wordCount = Lexicon.words(userAnswer).size
-        if (wordCount == 0 || TextNormalizer.foldCase(userAnswer.trim()) in setOf("bilmiyorum", "i don't know", "bilmiyorum.", "?")) {
-            return GradeResult(0.0, false, "Sorun değil; birlikte bakalım.", missingPoints = rubric, confidence = 0.9, rationale = "Cevap verilmedi.")
+        if (wordCount == 0 || TextNormalizer.foldCase(userAnswer.trim()) in CoreText.Tr.dontKnowAnswers + CoreText.En.dontKnowAnswers) {
+            return GradeResult(0.0, false, t.noProblem, missingPoints = rubric, confidence = 0.9, rationale = t.noAnswer)
         }
         if (acceptable.any { TextNormalizer.asciiFold(it).trim() == TextNormalizer.asciiFold(userAnswer).trim() }) {
-            return GradeResult(1.0, true, "Doğru.", confidence = 0.9, rationale = "Kabul edilen cevaplardan biriyle eşleşti.")
+            return GradeResult(1.0, true, t.correct, confidence = 0.9, rationale = t.matchedAcceptable)
         }
         val points = rubric.ifEmpty { keyPoints(modelAnswer, "") }
         val covered = points.filter { p -> Lexicon.stems(p).let { s -> s.isNotEmpty() && s.count { it in answerStems } * 2 >= s.size } }
@@ -389,39 +392,40 @@ class LocalHeuristicEngine {
         if (wordCount < 4) score = min(score, 0.4)
         score = score.coerceIn(0.0, 1.0)
         val feedback = when {
-            score >= 0.8 -> "Ana noktaları kapsıyorsun."
-            score >= 0.5 -> "Kısmen doğru; bazı noktalar eksik."
-            else -> "Cevap kitaptaki açıklamanın ana noktalarını kapsamıyor."
+            score >= 0.8 -> t.coversMainPoints
+            score >= 0.5 -> t.partlyCorrect
+            else -> t.missesMainPoints
         }
         return GradeResult(score, score >= 0.5, feedback, covered, missing, confidence = 0.45,
-            rationale = "Anahtar kelime kapsamına göre yaklaşık değerlendirme (${covered.size}/${points.size} nokta).")
+            rationale = t.keywordRationale(covered.size, points.size))
     }
 
     // ---------- Tutor ----------
 
     /** Scripted Socratic flow for offline teaching: diagnose → explain with book example → check → transfer → wrap up. */
-    fun teach(step: Int, concept: ConceptInput, chapter: ChapterInput?, lastAnswer: String?, lastExpected: String?, style: String?): TeachTurn {
+    fun teach(step: Int, concept: ConceptInput, chapter: ChapterInput?, lastAnswer: String?, lastExpected: String?, style: String?, lang: String? = null): TeachTurn {
+        val t = CoreText.of(lang)
         val examples = chapter?.let { ch -> Sentences.split(ch.text).filter { it.text != concept.explanation && containsTerm(it.text, concept.title) && it.text.length in 40..300 } }.orEmpty()
         val source = chapter?.let { SourceRef(it.index, it.title, it.pageStart, quote = concept.quote) }
         return when (step) {
             0 -> TeachTurn(
-                message = "“${concept.title}” konusuna başlayalım. Önce ne bildiğini görelim.",
-                question = "“${concept.title}” sana ne ifade ediyor? Bir iki cümleyle anlat (bilmiyorsan “bilmiyorum” yazabilirsin).",
+                message = t.teachStart(concept.title),
+                question = t.teachDiagnose(concept.title),
             )
             1 -> {
-                val g = grade(concept.explanation, keyPoints(concept.explanation, concept.title), lastAnswer.orEmpty())
+                val g = grade(concept.explanation, keyPoints(concept.explanation, concept.title), lastAnswer.orEmpty(), lang = lang)
                 val level = when { g.score >= 0.75 -> TeachingLevel.INTERMEDIATE; g.score >= 0.4 -> TeachingLevel.BASIC; else -> TeachingLevel.BEGINNER }
                 val cloze = examples.firstOrNull()
                 val styleNote = when (style) {
-                    "analogy", "debate" -> "\n\n(Benzetme ve tartışma üretmek için yapay zekâ sağlayıcısı gerekiyor; şimdilik kitaptan örnek gösteriyorum.)"
+                    "analogy", "debate" -> t.styleNeedsAi
                     else -> ""
                 }
                 TeachTurn(
-                    message = (if (g.score >= 0.5) "Güzel, temel fikri biliyorsun. " else "Hiç sorun değil, adım adım gidelim. ") +
-                        "Kitap bu kavramı şöyle açıklıyor:\n\n“${concept.explanation}”" +
-                        (cloze?.let { "\n\nKitaptan bir örnek:\n“${it.text}”" } ?: "") + styleNote,
-                    question = cloze?.let { s -> termRegex(concept.title).find(s.text)?.let { m -> "Boşluğu doldur: ${s.text.replaceRange(m.range, "_____")}" } }
-                        ?: "Bu açıklamadaki en önemli kelime sence hangisi, neden?",
+                    message = (if (g.score >= 0.5) t.knowsBasics else t.stepByStep) +
+                        t.bookExplains(concept.explanation) +
+                        (cloze?.let { t.bookExample(it.text) } ?: "") + styleNote,
+                    question = cloze?.let { s -> termRegex(concept.title).find(s.text)?.let { m -> t.fillBlank(s.text.replaceRange(m.range, "_____")) } }
+                        ?: t.keyWordQuestion,
                     example = cloze?.text,
                     source = source,
                     suggestedLevel = level,
@@ -431,21 +435,21 @@ class LocalHeuristicEngine {
                 val correct = lastExpected?.let { exp -> TextNormalizer.asciiFold(lastAnswer.orEmpty()).contains(TextNormalizer.asciiFold(exp).take(5)) } ?: (lastAnswer.orEmpty().length > 10)
                 val alt = examples.getOrNull(1)
                 TeachTurn(
-                    message = if (correct) "Doğru! 👏" else "Tam değil. Boşluğa “${lastExpected ?: concept.title}” gelmeliydi; çünkü cümle bu kavramın tanımına dayanıyor." +
-                        (alt?.let { "\n\nFarklı bir cümleyle tekrar bakalım:\n“${it.text}”" } ?: ""),
-                    question = "Bu kavramı günlük hayatında ya da işinde nerede kullanabilirsin? Somut bir durum yaz.",
+                    message = if (correct) t.correctClap else t.notQuite(lastExpected ?: concept.title) +
+                        (alt?.let { t.anotherSentence(it.text) } ?: ""),
+                    question = t.applyQuestion,
                     source = source,
                 )
             }
             3 -> TeachTurn(
-                message = if (lastAnswer.orEmpty().trim().length >= 15) "Bu, kavramı uygulamaya dökmenin iyi bir yolu." else "Biraz daha somut düşünmeyi dene: kim, nerede, ne zaman?",
-                question = "Son olarak: “${concept.title}” kavramını hiç bilmeyen birine kendi cümlelerinle nasıl anlatırdın?",
+                message = if (lastAnswer.orEmpty().trim().length >= 15) t.goodApplication else t.beConcrete,
+                question = t.explainToNovice(concept.title),
             )
             else -> {
-                val g = grade(concept.explanation, keyPoints(concept.explanation, concept.title), lastAnswer.orEmpty())
+                val g = grade(concept.explanation, keyPoints(concept.explanation, concept.title), lastAnswer.orEmpty(), lang = lang)
                 TeachTurn(
-                    message = (if (g.correct) "Harika, kavramı kendi cümlelerinle açıklayabildin. " else "Açıklaman bazı noktaları kaçırıyor: ${g.missingPoints.joinToString()}. ") +
-                        "Bu kavramı tekrar kuyruğuna ekledim; unutma eğrine göre yeniden soracağım.",
+                    message = (if (g.correct) t.explainedWell else t.missedPoints(g.missingPoints.joinToString())) +
+                        t.addedToReview,
                     question = null,
                     expectsAnswer = false,
                     understood = g.correct,
@@ -456,22 +460,24 @@ class LocalHeuristicEngine {
 
     // ---------- Stories & links ----------
 
-    fun story(concept: ConceptInput, chapter: ChapterInput?): StoryDraft {
+    fun story(concept: ConceptInput, chapter: ChapterInput?, lang: String? = null): StoryDraft {
+        val t = CoreText.of(lang)
         val examples = chapter?.let { ch -> Sentences.split(ch.text).filter { containsTerm(it.text, concept.title) && it.text.length in 40..300 } }.orEmpty().take(3)
         return StoryDraft(
-            title = "Kitaptan örnekler: ${concept.title}",
+            title = t.bookExamplesTitle(concept.title),
             body = if (examples.isEmpty()) concept.explanation else examples.joinToString("\n\n") { "“${it.text}”" },
             kind = "book_examples",
             fromBook = true,
             source = chapter?.let { SourceRef(it.index, it.title, it.pageStart, quote = OutputValidator.limitQuote(examples.firstOrNull()?.text)) },
             questions = listOf(
-                QuestionDraft(QuestionType.EXPLAIN_OWN_WORDS, "Bu örneklerde “${concept.title}” nasıl ortaya çıkıyor?", answer = concept.explanation,
+                QuestionDraft(QuestionType.EXPLAIN_OWN_WORDS, t.howAppears(concept.title), answer = concept.explanation,
                     rubric = keyPoints(concept.explanation, concept.title), chapterIndex = concept.chapterIndex),
             ),
         )
     }
 
-    fun links(conceptsByBook: Map<String, List<String>>): ConceptLinksDraft {
+    fun links(conceptsByBook: Map<String, List<String>>, lang: String? = null): ConceptLinksDraft {
+        val t = CoreText.of(lang)
         val entries = conceptsByBook.flatMap { (book, cs) -> cs.map { book to it } }
         val links = mutableListOf<ConceptLinkDraft>()
         for (i in entries.indices) for (j in i + 1 until entries.size) {
@@ -481,8 +487,8 @@ class LocalHeuristicEngine {
             if (sa.isEmpty() || sb.isEmpty()) continue
             val jaccard = sa.intersect(sb).size.toDouble() / sa.union(sb).size
             when {
-                jaccard >= 0.99 -> links += ConceptLinkDraft(a, b, "same_concept", "İki kitapta aynı adla geçiyor.", 0.7)
-                jaccard >= 0.5 -> links += ConceptLinkDraft(a, b, "related", "Adları büyük ölçüde örtüşüyor; ilişki yerel olarak tahmin edildi.", 0.35)
+                jaccard >= 0.99 -> links += ConceptLinkDraft(a, b, "same_concept", t.sameName, 0.7)
+                jaccard >= 0.5 -> links += ConceptLinkDraft(a, b, "related", t.namesOverlap, 0.35)
             }
         }
         return ConceptLinksDraft(links)

@@ -1,5 +1,6 @@
 package com.bookmind.app.data.repo
 
+import com.bookmind.app.data.settings.AppLanguage
 import com.bookmind.app.data.db.BookEntity
 import com.bookmind.app.data.db.BookMindDatabase
 import com.bookmind.app.data.db.ChapterEntity
@@ -37,7 +38,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import javax.inject.Inject
 import javax.inject.Singleton
 
-class GenerationException(val error: AiException) : Exception(error.message)
+class GenerationException(val error: AiException) : Exception(AppLanguage.text.aiError(error))
 
 /** Summaries, concepts, the AI tutor and story/example generation. */
 @Singleton
@@ -52,7 +53,7 @@ class StudyRepository @Inject constructor(
     private val clock: AppClock,
 ) {
     fun bookInfo(book: BookEntity) = LearningAi.Book(
-        book.title, book.author, book.language,
+        book.title, book.author, AppLanguage.tag,
         book.category?.let { runCatching { BookGenre.valueOf(it) }.getOrNull() } ?: BookGenre.INFORMATIONAL,
     )
 
@@ -196,7 +197,7 @@ class StudyRepository @Inject constructor(
         reviews.ensureItem(
             bookId = bookId, type = com.bookmind.app.data.db.LearningItemType.CONCEPT,
             dedupeKey = "concept:$bookId:${concept.normalizedTitle}",
-            prompt = "“${concept.title}” nedir? Kendi cümlelerinle açıkla.", expected = concept.explanation, explanation = null,
+            prompt = AppLanguage.text.whatIs(concept.title), expected = concept.explanation, explanation = null,
             sourceRefs = concept.sourceReferences, conceptId = concept.id, dueNow = understood == false,
         )
     }

@@ -1,5 +1,6 @@
 package com.bookmind.app.data.repo
 
+import com.bookmind.app.data.settings.AppLanguage
 import com.bookmind.app.data.db.BookMindDatabase
 import com.bookmind.app.data.db.PlanTaskEntity
 import com.bookmind.app.data.db.StudyPlanEntity
@@ -43,7 +44,7 @@ class PlanRepository @Inject constructor(
         val existing = db.plans().forBook(bookId)
         val plan = StudyPlanEntity(existing?.id ?: newId(), userId, bookId, dailyMinutes, clock.today().toEpochDay(), existing?.createdAt ?: now, now)
         db.plans().upsertPlan(plan)
-        db.plans().replaceTasks(plan.id, StudyPlanner.build(infos, dailyMinutes, clock.today()).map { it.toEntity(plan.id) })
+        db.plans().replaceTasks(plan.id, StudyPlanner.build(infos, dailyMinutes, clock.today(), lang = AppLanguage.tag).map { it.toEntity(plan.id) })
     }
 
     /** Called when the plan is shown: moves missed tasks forward and adds reviews for weak chapters. */
@@ -53,7 +54,7 @@ class PlanRepository @Inject constructor(
         val domain = tasks.map { StudyPlanner.PlanTask(LocalDate.ofEpochDay(it.epochDay), StudyPlanner.TaskType.valueOf(it.type), it.chapterIndex, it.minutes, it.title, it.done) }
         val today = clock.today()
         var updated = StudyPlanner.reschedule(domain, today, plan.dailyMinutes)
-        updated = StudyPlanner.adapt(updated, chapterAccuracy(bookId), today)
+        updated = StudyPlanner.adapt(updated, chapterAccuracy(bookId), today, AppLanguage.tag)
         if (updated != domain) {
             val doneIds = tasks.filter { it.done }.associateBy { Triple(it.epochDay, it.title, it.type) }
             db.plans().replaceTasks(plan.id, updated.map { t ->

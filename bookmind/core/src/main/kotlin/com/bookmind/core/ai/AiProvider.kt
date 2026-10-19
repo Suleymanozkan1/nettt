@@ -32,13 +32,13 @@ data class AiResponse(
 )
 
 sealed class AiException(message: String, cause: Throwable? = null) : Exception(message, cause) {
-    class NotConfigured : AiException("AI sağlayıcısı yapılandırılmadı")
-    class Network(cause: Throwable?) : AiException("Ağ hatası", cause)
-    class Timeout : AiException("İstek zaman aşımına uğradı")
-    class QuotaExceeded(val resetAt: Long?) : AiException("Kullanım kotası doldu")
-    class Unauthorized : AiException("Oturum geçersiz")
-    class Server(val code: Int, detail: String?) : AiException("Sunucu hatası ($code)${detail?.let { ": $it" }.orEmpty()}")
-    class InvalidOutput(detail: String) : AiException("Model yanıtı geçersiz: $detail")
+    class NotConfigured : AiException("AI provider not configured")
+    class Network(cause: Throwable?) : AiException("Network error", cause)
+    class Timeout : AiException("Request timed out")
+    class QuotaExceeded(val resetAt: Long?) : AiException("Usage quota exceeded")
+    class Unauthorized : AiException("Session invalid")
+    class Server(val code: Int, detail: String?) : AiException("Server error ($code)${detail?.let { ": $it" }.orEmpty()}")
+    class InvalidOutput(detail: String) : AiException("Invalid model output: $detail")
 
     /** Network-ish errors are worth retrying; quota, auth and bad output are not. */
     val retryable: Boolean get() = this is Network || this is Timeout || (this is Server && code >= 500)

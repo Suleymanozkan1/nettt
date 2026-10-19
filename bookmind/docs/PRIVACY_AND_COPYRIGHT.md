@@ -40,7 +40,7 @@
   arasındadır.
 - Üretilen içeriğin kaynağı mümkün olduğunca gösterilir; doğrulanamayan kaynak açıkça "doğrulanamadı" olarak
   işaretlenir; kitapta olmayan, yapay zekânın ürettiği örnekler "üretilmiş örnek (kitapta yok)" etiketlidir.
-- **Demo içeriği:** "Öğrenmenin Bilimi" BookMind için özgün yazılmıştır, CC0 olarak serbesttir; başka bir eserden
+- **Demo içeriği:** "Öğrenmenin Bilimi" ve İngilizce eşi "The Science of Learning" BookMind için özgün yazılmıştır, CC0 olarak serbesttir; başka bir eserden
   alıntı içermez.
 
 ## İçerik sağlayıcı şartları
@@ -63,3 +63,5 @@
 | Robolectric, JUnit, MockWebServer | MIT / EPL / Apache 2.0 | Yalnızca test |
 | FSRS algoritması | open-spaced-repetition formülleri (MIT) | Kod BookMind'da yeniden yazıldı |
 | Edge Functions: @anthropic-ai/sdk, @supabase/supabase-js | MIT | Sunucu |
+
+- **Yazı tipleri:** Plus Jakarta Sans ve Lora, SIL Open Font License 1.1 ile uygulamaya gömülüdür; lisans metinleri `app/src/main/assets/licenses/` içindedir.

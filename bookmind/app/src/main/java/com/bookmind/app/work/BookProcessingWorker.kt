@@ -1,5 +1,6 @@
 package com.bookmind.app.work
 
+import com.bookmind.app.data.settings.AppLanguage
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -33,7 +34,7 @@ class BookProcessingWorker @AssistedInject constructor(
         Notifier.ensureChannels(applicationContext)
         val notification = NotificationCompat.Builder(applicationContext, Notifier.CHANNEL_PROCESSING)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(applicationContext.getString(R.string.processing_notification_title))
+            .setContentTitle(AppLanguage.localized(applicationContext).getString(R.string.processing_notification_title))
             .setOngoing(true)
             .setSilent(true)
             .setProgress(0, 0, true)

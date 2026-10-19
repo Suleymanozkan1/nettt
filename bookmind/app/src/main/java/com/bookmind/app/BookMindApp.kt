@@ -21,9 +21,8 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -44,9 +43,11 @@ class BookMindApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         Notifier.ensureChannels(this)
+        // Apply the app language before the first activity is created so the UI never starts in another one.
+        // A DataStore read of a few bytes; doing it synchronously avoids a visible activity recreation.
+        val lang = runBlocking { settings.loadLanguage() }
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang))
         appScope.launch {
-            val lang = settings.settings.first().language
-            if (lang != "system") withContext(Dispatchers.Main) { AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang)) }
             users.userId()
             users.refreshTimezone()
             reminders.reschedule()

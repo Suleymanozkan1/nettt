@@ -56,7 +56,7 @@ cp local.properties.example local.properties   # sdk.dir'i ayarla; Supabase alan
 
 Supabase alanları boşsa uygulama **yalnızca yerel modda** çalışır: içe aktarma, analiz (cihaz üzerindeki motor),
 özet, quiz, öğretmen, tekrar, notlar, plan ve bildirimler tam çalışır; hesap ve bulut yapay zekâ kapalıdır.
-İlk açılışta onboarding, isteğe bağlı olarak özgün demo kitabı (**Öğrenmenin Bilimi**, CC0) ekler.
+İlk açılışta onboarding önce **dili** sorar (Türkçe varsayılan, İngilizce seçilebilir); arayüz, cihaz üzerinde üretilen içerik, yapay zekâ çıktısı, plan başlıkları, uyarılar ve bildirimler tek bu dili kullanır, ekranda iki dil karışmaz. İsteğe bağlı olarak özgün demo kitabını seçilen dilde ekler (**Öğrenmenin Bilimi** / **The Science of Learning**, CC0).
 
 ### Yapılandırma
 
@@ -91,8 +91,8 @@ Room şeması değişirse sunucu tablolarını yeniden üret:
 ## Test
 
 ```sh
-./gradlew :core:test                 # 86 birim testi (FSRS, ayrıştırıcılar, AI hattı, planlayıcı, senkron istemcisi)
-./gradlew :app:testDebugUnitTest     # 35 test: Room/migration, işleme hattı, depolar, senkronizasyon, Compose UI (Robolectric + Hilt)
+./gradlew :core:test                 # 90 birim testi (FSRS, ayrıştırıcılar, AI hattı, planlayıcı, senkron istemcisi)
+./gradlew :app:testDebugUnitTest     # 35 test (+3 isteğe bağlı ekran görüntüsü turu): Room/migration, işleme hattı, depolar, senkronizasyon, Compose UI (Robolectric + Hilt)
 ./gradlew :app:lintDebug
 bash scripts/test-supabase-sql.sh    # migration'lar + RLS testleri (PostgreSQL 16)
 (cd supabase/functions && deno test --allow-env tests/)   # Edge Function testleri
@@ -127,3 +127,15 @@ Release derlemesi şu an **debug anahtarıyla** imzalanır (yerel denemeler içi
 Kullanılan bağımlılıklar ve lisansları uygulama içinde (Profil → Hakkında) ve
 [docs/PRIVACY_AND_COPYRIGHT.md](docs/PRIVACY_AND_COPYRIGHT.md) içinde listelenir. Demo kitap BookMind için özgün
 yazılmıştır ve CC0'dır.
+
+### Tasarım ve metinler
+
+- Tasarım sistemi `ui/theme/Theme.kt` (marka renkleri, açık/koyu tema, Plus Jakarta Sans + Lora yazı tipleri, şekiller) ve
+  `ui/components/Components.kt` (kartlar, kahraman kartı, üretilmiş kitap kapakları, halka/çubuk grafikler, seçim çipleri,
+  düğmeler) içindedir. Duvar kâğıdından gelen dinamik renk bilerek kullanılmaz.
+- Yazı tipleri SIL Open Font License 1.1 ile dağıtılır (`app/src/main/assets/licenses/`).
+- Tüm arayüz metinleri `scripts/gen_strings.py` içinde TR/EN çiftleri olarak tutulur; `python3 scripts/gen_strings.py
+  app/src/main/res app/src/main/java` iki `strings.xml` dosyasını üretir ve eksik/kullanılmayan anahtarları raporlar.
+- Çekirdek modülün ürettiği metinler (`core/.../i18n/CoreText.kt`) aynı dil ayarını izler.
+- Ekran görüntüleri: `./gradlew :app:testDebugUnitTest --tests '*ScreenshotTour*' -Dbookmind.screenshots=<klasör>`
+  (Robolectric yerel grafik; TR, EN ve koyu tema).

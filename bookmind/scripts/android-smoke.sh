@@ -49,17 +49,21 @@ adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
 adb logcat -c
 echo "== cold start"; adb shell am start -W -n "$PKG/.MainActivity" | tee "$OUT/startup.txt"
 
-echo "== onboarding"
-wait_text "Understand your books" 90
-tap_text "Next"; tap_text "Next"; tap_text "Next"
+echo "== onboarding: language first (the app starts in Turkish), then switch to English"
+wait_text "Türkçe" 90
+adb exec-out screencap -p > "$OUT/00-language.png"
+tap_text "English"
+# Choosing a language recreates the activity in that language.
+wait_text "Next" 30
+tap_text "Next"; tap_text "Next"; tap_text "Next"; tap_text "Next"
 tap_text "Start"
-# "Start today's reviews" appears once the demo book's cards exist; otherwise the Today screen title is enough.
-wait_text "Start today" 60 quiet || wait_text "Today" 30
+# "Start reviewing" appears once the demo book's cards exist; otherwise the Today screen title is enough.
+wait_text "Start reviewing" 60 quiet || wait_text "Today" 30
 adb exec-out screencap -p > "$OUT/01-home.png"
 
-echo "== demo book processed in the background (release build, WorkManager)"
+echo "== demo book (English edition) processed in the background (release build, WorkManager)"
 tap_text "Library"
-wait_text "Öğrenmenin Bilimi" 60
+wait_text "The Science of Learning" 60
 deadline=$((SECONDS + 180))
 while [ $SECONDS -lt $deadline ]; do
   dump
@@ -69,12 +73,14 @@ done
 grep -qE 'text="(Failed|OCR needed)"' "$OUT/ui.xml" && { echo "FAIL: processing failed"; exit 1; }
 adb exec-out screencap -p > "$OUT/02-library.png"
 
-echo "== book detail and on-device quick summary"
-tap_text "Öğrenmenin Bilimi"
+echo "== book detail and on-device quick summary, all in English"
+tap_text "The Science of Learning"
 wait_text "Quick summary" 60
 tap_text "Quick summary"
 tap_text "Generate"
-wait_text "Temel fikir" 90
+wait_text "Key idea" 90
+dump
+if grep -qE 'text="[^"]*(Temel fikir|Hızlı özet|Öne çıkan)' "$OUT/ui.xml"; then echo "FAIL: Turkish text on an English screen"; exit 1; fi
 adb exec-out screencap -p > "$OUT/03-summary.png"
 
 echo "== crash check"

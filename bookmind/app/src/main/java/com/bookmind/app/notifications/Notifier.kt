@@ -1,5 +1,6 @@
 package com.bookmind.app.notifications
 
+import com.bookmind.app.data.settings.AppLanguage
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -21,8 +22,9 @@ object Notifier {
     const val ID_PROCESSING = 1002
     const val EXTRA_DESTINATION = "destination"
 
-    fun ensureChannels(context: Context) {
-        val nm = context.getSystemService(NotificationManager::class.java)
+    fun ensureChannels(appContext: Context) {
+        val nm = appContext.getSystemService(NotificationManager::class.java)
+        val context = AppLanguage.localized(appContext)
         nm.createNotificationChannel(NotificationChannel(CHANNEL_REMINDERS, context.getString(R.string.channel_reminders), NotificationManager.IMPORTANCE_DEFAULT))
         nm.createNotificationChannel(NotificationChannel(CHANNEL_PROCESSING, context.getString(R.string.channel_processing), NotificationManager.IMPORTANCE_LOW))
     }

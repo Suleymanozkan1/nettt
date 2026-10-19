@@ -82,7 +82,7 @@ class RemoteAiProvider(
             val reply = try {
                 AiJson.json.decodeFromString(Reply.serializer(), text)
             } catch (e: Exception) {
-                throw AiException.InvalidOutput("sunucu yanıtı okunamadı")
+                throw AiException.InvalidOutput("unreadable server response")
             }
             return AiResponse(reply.text, reply.model, reply.usage?.inputTokens, reply.usage?.outputTokens, reply.usage?.costMicros)
         }

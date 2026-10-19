@@ -1,10 +1,13 @@
 package com.bookmind.core.text
 
+import com.bookmind.core.i18n.CoreText
+
 /** Markdown books: level-1/level-2 headings become chapters; formatting syntax is stripped from the body. */
 object MarkdownParser {
     private val heading = Regex("^(#{1,2})\\s+(.+?)\\s*#*\\s*$")
 
-    fun parse(markdown: String): ExtractedBook {
+    fun parse(markdown: String, lang: String? = null): ExtractedBook {
+        val t = CoreText.of(lang)
         val text = TextNormalizer.normalize(markdown)
         val lines = text.split('\n')
         var bookTitle: String? = null
@@ -21,7 +24,7 @@ object MarkdownParser {
             // Front matter before the first chapter heading (a one-line note, a dedication) is not a chapter.
             val isTinyFrontMatter = currentTitle == null && TextNormalizer.wordCount(content) < 40
             if (content.isNotEmpty() && !isTinyFrontMatter) {
-                chapters += ExtractedChapter(currentTitle ?: "Giriş", content, startLocation = "satır $currentStart")
+                chapters += ExtractedChapter(currentTitle ?: t.introduction, content, startLocation = t.line(currentStart))
             }
             body.clear()
         }
@@ -49,7 +52,7 @@ object MarkdownParser {
         flush()
         val all = chapters.joinToString("\n\n") { it.text }
         if (chapters.size <= 1) {
-            val (split, synthetic) = ChapterDetector.split(all)
+            val (split, synthetic) = ChapterDetector.split(all, lang)
             return ExtractedBook(bookTitle, null, LanguageDetector.detect(all), split, syntheticChapters = synthetic)
         }
         return ExtractedBook(bookTitle, null, LanguageDetector.detect(all), chapters)

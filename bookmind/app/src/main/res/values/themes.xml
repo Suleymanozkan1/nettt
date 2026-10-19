@@ -3,6 +3,5 @@
     <style name="Theme.BookMind" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
     </style>
-    <color name="window_background">#FFFAFDFC</color>
-    <color name="ic_launcher_background">#FF00696E</color>
+    <color name="window_background">#FFF7F6FB</color>
 </resources>

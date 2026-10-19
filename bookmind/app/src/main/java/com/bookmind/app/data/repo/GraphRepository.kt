@@ -1,5 +1,6 @@
 package com.bookmind.app.data.repo
 
+import com.bookmind.app.data.settings.AppLanguage
 import com.bookmind.app.data.db.BookMindDatabase
 import com.bookmind.app.data.db.ConceptLinkEntity
 import com.bookmind.app.data.db.LinkRow
@@ -32,11 +33,11 @@ class GraphRepository @Inject constructor(
         val books = db.books().all(userId).associateBy { it.id }
         val concepts = db.concepts().allForUser(userId).filter { it.bookId in books }
         val byBook = concepts.groupBy { it.bookId }
-        if (byBook.size < 2) return Result(0, listOf("En az iki kitapta kavram olmalı."), false)
+        if (byBook.size < 2) return Result(0, listOf(AppLanguage.text.needTwoBooks), false)
         // Most important concepts per book keep the prompt small.
         val input = byBook.mapKeys { books.getValue(it.key).title }.mapValues { (_, cs) -> cs.sortedByDescending { it.importance }.take(30).map { it.title } }
-        return when (val r = ai.linkConcepts(input, books.values.firstOrNull()?.language)) {
-            is AiResult.Failed -> Result(0, listOf(r.error.message ?: "hata"), false)
+        return when (val r = ai.linkConcepts(input, AppLanguage.tag)) {
+            is AiResult.Failed -> Result(0, listOf(AppLanguage.text.aiError(r.error)), false)
             is AiResult.Ok -> {
                 val now = clock.now()
                 fun find(title: String) = concepts.firstOrNull { TextNormalizer.asciiFold(it.title) == TextNormalizer.asciiFold(title) }

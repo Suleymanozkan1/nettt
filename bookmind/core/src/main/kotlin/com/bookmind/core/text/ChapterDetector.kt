@@ -1,5 +1,7 @@
 package com.bookmind.core.text
 
+import com.bookmind.core.i18n.CoreText
+
 /**
  * Finds chapter boundaries in plain text. Recognises common Turkish and English headings
  * ("Bölüm 3", "3. Bölüm", "ÜÇÜNCÜ BÖLÜM", "Chapter 3", "CHAPTER III", "Part One", "Kısım 2") and falls back
@@ -61,20 +63,21 @@ object ChapterDetector {
         return kept
     }
 
-    fun split(text: String, fallbackTitle: (Int) -> String = { "Kısım ${it + 1}" }, targetSectionChars: Int = 12_000): Pair<List<ExtractedChapter>, Boolean> {
+    fun split(text: String, lang: String? = null, fallbackTitle: (Int) -> String = { CoreText.of(lang).part(it + 1) }, targetSectionChars: Int = 12_000): Pair<List<ExtractedChapter>, Boolean> {
+        val t = CoreText.of(lang)
         val normalized = TextNormalizer.normalize(text)
         val headings = findHeadings(normalized)
         if (headings.size >= 2) {
             val chapters = mutableListOf<ExtractedChapter>()
             val preface = normalized.substring(0, headings.first().charOffset).trim()
             if (TextNormalizer.wordCount(preface) >= 80) {
-                chapters += ExtractedChapter("Başlangıç", preface, startLocation = "satır 1")
+                chapters += ExtractedChapter(t.opening, preface, startLocation = t.line(1))
             }
             for ((i, h) in headings.withIndex()) {
                 val end = headings.getOrNull(i + 1)?.charOffset ?: normalized.length
                 val body = normalized.substring(h.charOffset, end).lines().drop(1).joinToString("\n").trim()
                 if (body.isBlank()) continue
-                chapters += ExtractedChapter(h.title, body, startLocation = "satır ${h.lineIndex + 1}")
+                chapters += ExtractedChapter(h.title, body, startLocation = t.line(h.lineIndex + 1))
             }
             if (chapters.isNotEmpty()) return chapters to false
         }

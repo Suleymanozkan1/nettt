@@ -138,3 +138,7 @@ dependencies {
     testImplementation(libs.hilt.android.testing)
     kspTest(libs.hilt.compiler)
 }
+
+tasks.withType<Test>().configureEach {
+    System.getProperty("bookmind.screenshots")?.let { systemProperty("bookmind.screenshots", it) }
+}

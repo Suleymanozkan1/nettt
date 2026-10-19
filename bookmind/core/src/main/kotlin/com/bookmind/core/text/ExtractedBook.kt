@@ -1,5 +1,7 @@
 package com.bookmind.core.text
 
+import com.bookmind.core.i18n.CoreText
+
 import kotlinx.serialization.Serializable
 
 enum class SourceType { PDF, EPUB, TXT, MARKDOWN, MANUAL }
@@ -48,11 +50,12 @@ data class SourceRef(
     /** False when a reference from a model could not be matched against the book text. */
     val verified: Boolean = true,
 ) {
-    fun label(): String = buildString {
-        append("Bölüm ").append(chapterIndex + 1)
+    fun label(lang: String? = null): String = buildString {
+        val t = CoreText.of(lang)
+        append(t.chapter(chapterIndex + 1))
         chapterTitle?.takeIf { it.isNotBlank() }?.let { append(" – ").append(it) }
         if (pageStart != null) {
-            append(", s. ").append(pageStart)
+            append(", ").append(t.pageAbbrev).append(" ").append(pageStart)
             if (pageEnd != null && pageEnd != pageStart) append("–").append(pageEnd)
         }
     }

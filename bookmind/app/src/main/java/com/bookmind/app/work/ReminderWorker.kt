@@ -1,5 +1,6 @@
 package com.bookmind.app.work
 
+import com.bookmind.app.data.settings.AppLanguage
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
@@ -49,7 +50,7 @@ class ReminderWorker @AssistedInject constructor(
                     Duration.between(prefs.time, now).abs().toMinutes() > 45
                 val shouldShow = if (isEveningNudge) ReminderScheduler.shouldShowEveningNudge(goal.reached, due) else (due > 0 || !goal.reached)
                 if (shouldShow) {
-                    val ctx = applicationContext
+                    val ctx = AppLanguage.localized(applicationContext)
                     val lines = buildList {
                         if (ReminderType.DUE_REVIEWS in prefs.types && due > 0) add(ctx.getString(R.string.reminder_due, due))
                         if (ReminderType.OVERDUE in prefs.types && overdue > 0) add(ctx.getString(R.string.reminder_overdue, overdue))

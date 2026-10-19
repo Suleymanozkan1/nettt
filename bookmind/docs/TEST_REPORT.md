@@ -7,7 +7,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 
 | Paket | Komut | Test | Sonuç |
 |---|---|---|---|
-| Core birim testleri | `./gradlew :core:test` | 86 | ✅ 86/86 |
+| Core birim testleri | `./gradlew :core:test` | 90 | ✅ 90/90 |
 | Uygulama (Robolectric: Room, hat, depolar, senkron, Compose UI) | `./gradlew :app:testDebugUnitTest` | 35 | ✅ 35/35 |
 | SQL migration + RLS | `bash scripts/test-supabase-sql.sh` | 9 senaryo grubu | ✅ |
 | Edge Functions | `deno test --allow-env tests/` (+ `deno check`) | 8 | ✅ 8/8 |
@@ -21,6 +21,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 |---|---|---|
 | `FsrsSchedulerTest` | 10 | Yeni kart aralıkları (Good=4 g, Easy=14 g), R(S,S)=0,9, ardışık iyi tekrarla büyüyen aralık, unutmada kararlılık düşüşü + lapse, zorluk sınırları, geç tekrarın daha çok güçlendirmesi, hedef oranın aralığa etkisi, deterministik fuzz, önizleme, yeni kartta R yok |
 | `Sm2AndResolverTest` | 6 | SM-2 1→6→15 ilerlemesi ve unutma; derece birleştirme: yanlış=AGAIN, doğru+“hatırlayamadım”=HARD, ipucu/kısmi puan sınırı, yavaş cevap, öz-değerlendirmeli kartlar |
+| `OutputLanguageTest` | 4 | İngilizce demo kitaptan İngilizce kavramlar; yerel özet, soru, öğretmen, notlandırma, plan, ayrıştırıcı yedek başlıkları ve kaynak etiketlerinin seçilen dili izlemesi; Türkçenin varsayılan kalması |
 | `ParsersTest` | 17 | Markdown bölümleri, satır içi biçim temizleme, TR/EN başlık tespiti ve içindekiler eleme, başlıksız metinde sentetik bölümler, PDF anahattı/başlık sayfaları/taranmış PDF (OCR gerekli)/tire birleştirme/tekrarlayan üst bilgi, cümle bölme (kısaltma, ondalık), parçalama ofsetleri, sihirli bayt tespiti, UTF-8 BOM ve Windows-1254, Türkçe büyük/küçük harf, dil tespiti, SHA-256, kaynak etiketi |
 | `EpubParserTest` | 5 | Meta veri, spine sırası, nav başlıkları, NCX/başlık geri düşmesi, iç içe öğe tekrarlamama, script temizliği, DRM reddi, eksik container, yol normalleştirme |
 | `AiPipelineTest` | 13 | JSON çıkarma (çit, metin, dize içi parantez, kesik), bozuk çıktı → InvalidOutput, enjeksiyon etiketlerinin etkisizleşmesi, geçersiz/belirsiz soruların ayıklanması, uydurma alıntının silinmesi, puan sıkıştırma, mock ile uçtan uca, önbellek, geçici hatada yeniden deneme, geçersiz JSON'da düzeltici deneme, kalıcı hatada yerel motora düşme, yeniden denenmeyen hatalar, kota/sağlayıcı yokken yerel motor, özet kaynak doğrulaması |
@@ -98,3 +99,10 @@ denetimi. Bu oturumun ortamında KVM olmadığından emülatör yerelde çalış
 - Gerçek Supabase projesine ve gerçek Claude API'ye karşı uçtan uca test yapılmadı (kimlik bilgisi yok).
 - ML Kit OCR ve PdfBox ile gerçek PDF dosyaları cihazda test edilmedi (PDF yapı mantığı birim testli).
 - Erişilebilirlik (TalkBack, kontrast) için manuel denetim yapılmadı.
+
+## Görsel doğrulama (ekran görüntüsü turu)
+
+`ScreenshotTour` (Robolectric yerel grafik, varsayılan olarak atlanır) uygulamayı Türkçe, İngilizce ve koyu temada baştan sona
+gezer: dil seçimi, onboarding, Bugün, Kütüphane, kitap detayı, kavramlar, hızlı özet, quiz kurulumu/soru/geri bildirim, tekrar
+kartı ve değerlendirme, İlerleme, Profil. İngilizce turda ekranda Türkçe metin kalmadığı görsel olarak ve CI emülatör testinde
+(`scripts/android-smoke.sh`, İngilizce özet ekranında Türkçe metin aranır) doğrulanır.

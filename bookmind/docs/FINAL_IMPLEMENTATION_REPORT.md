@@ -23,7 +23,7 @@ NOT_IMPLEMENTED, BLOCKED (dış bilgi/izin gerekir).
 | 11 | Bildirim tercihleri çalışıyor | IMPLEMENTED | `LearningFlowTest.reminders…`, `AppUiTest.notification_settings_are_saved`, `LearningTest` |
 | 12 | İnternet yokken yerel işlevler çalışıyor | IMPLEMENTED | Varsayılan mod tamamen cihaz üzerinde; AI hatasında yerel motor (`PipelineTest.AI failures…`) |
 | 13 | Kullanıcı verileri hesaplar arasında korunuyor | PARTIAL | Senkron motoru, RLS ve hesap akışı uygulandı ve MockWebServer + PostgreSQL ile test edildi; **canlı bir Supabase projesinde denenmedi** (BLOCKED: proje URL/anahtar) |
-| 14 | Temel testler geçiyor | IMPLEMENTED | 86 + 35 + 8 + SQL suite, CI |
+| 14 | Temel testler geçiyor | IMPLEMENTED | 90 + 35 + 8 + SQL suite, CI |
 | 15 | Uygulama derlemesi başarılı | IMPLEMENTED | `assembleDebug`, `assembleRelease` (R8) |
 | 16 | Güvenlik ve telif sınırları belgelenmiş | IMPLEMENTED | [PRIVACY_AND_COPYRIGHT.md](PRIVACY_AND_COPYRIGHT.md) |
 | 17 | Uygulanmayan özellikler açıkça raporlanmış | IMPLEMENTED | Bu belge |
@@ -101,7 +101,7 @@ NOT_IMPLEMENTED, BLOCKED (dış bilgi/izin gerekir).
 | Öğe | Durum | Not |
 |---|---|---|
 | Tüm bildirim türleri, yerel saat dilimi, izin akışı, aç/kapa, saat, gün, yoğunluk, tatil modu, gizli içerik | IMPLEMENTED | |
-| M3 açık/koyu, TR/EN altyapısı, uygulama dili seçimi | IMPLEMENTED | İngilizce çoğul biçimleri eksik (lint uyarıları) |
+| M3 açık/koyu, marka tasarım sistemi, TR/EN, uygulama dili seçimi (onboarding + Profil) | IMPLEMENTED | Tek dil kuralı: arayüz, yerel motor, AI çıktısı, plan, uyarı ve bildirimler aynı dilde; demo kitap iki dilde. Önceden üretilmiş içerik kendi dilinde kalır. İngilizce çoğul biçimlerinin bir kısmı eksik (lint uyarıları) |
 | Erişilebilirlik (etiketler, grafik açıklamaları, büyük dokunma alanı) | PARTIAL | Uygulandı; TalkBack/kontrast denetimi yapılmadı |
 | Yükleniyor/boş/hata/başarı durumları, ilerleme göstergeleri | IMPLEMENTED | İskelet (skeleton) ekranlar yok |
 | Tüm temel ekranlar gerçek veri ve gezinmeyle | IMPLEMENTED | 20 ekran |

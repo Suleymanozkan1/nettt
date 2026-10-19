@@ -43,7 +43,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 @HiltAndroidTest
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [32], application = HiltTestApplication::class, qualifiers = "w411dp-h891dp")
+@Config(sdk = [32], application = HiltTestApplication::class, qualifiers = "tr-w411dp-h891dp")
 class AppUiTest {
     @get:Rule(order = 0) val hilt = HiltAndroidRule(this)
     @get:Rule(order = 1) val compose: ComposeTestRule = createEmptyComposeRule()
@@ -93,8 +93,8 @@ class AppUiTest {
 
     @Test fun onboarding_completes_and_lands_on_today() {
         launch()
-        waitForText(s(R.string.onb_title_1))
-        repeat(3) { compose.onNodeWithText(s(R.string.next)).performClick() }
+        waitForText("Türkçe")
+        repeat(4) { compose.onNodeWithText(s(R.string.next)).performClick() }
         compose.onNodeWithText(s(R.string.onb_setup_title)).assertExists()
         compose.onNodeWithText(s(R.string.minutes_short, 20)).performClick()
         compose.onNodeWithText(s(R.string.onb_start)).performClick()
@@ -145,7 +145,7 @@ class AppUiTest {
         waitForText(s(R.string.quiz))
         compose.onNode(hasText(s(R.string.quiz), substring = true) and hasClickAction()).performClick()
         waitForText(s(R.string.create_quiz))
-        compose.onNodeWithText(s(R.string.create_quiz)).performScrollTo().performClick()
+        compose.onNodeWithText(s(R.string.create_quiz)).performClick()
         waitForText(s(R.string.question_n_of, 1, 8), 15_000)
         assertEquals(1, runBlocking { db.quizzes().wrongQuestions(bookId).size + 1 })
     }
@@ -170,6 +170,7 @@ class AppUiTest {
         waitForText(s(R.string.library_empty_title))
         compose.onAllNodesWithText(s(R.string.add_book)).onFirst().performClick()
         waitForText(s(R.string.add_manual))
+        compose.onNodeWithText(s(R.string.add_manual)).performClick()
         compose.onNode(hasSetTextAction() and hasText(s(R.string.book_title))).performTextInput("Kısa")
         compose.onNode(hasSetTextAction() and hasText(s(R.string.book_text))).performTextInput("çok kısa metin")
         waitForText(s(R.string.text_too_short))
