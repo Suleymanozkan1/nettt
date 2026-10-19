@@ -63,6 +63,8 @@
     <string name="ai_tier_light">Light</string>
     <string name="ai_tier_recommended">Recommended</string>
     <string name="ai_title">AI assistant</string>
+    <string name="ai_unsupported_cpu">This phone\'s processor (32-bit) can\'t run the AI model. The app works fully with the classic methods.</string>
+    <string name="ai_unsupported_ram">This phone\'s memory (%1$s GB) is too small for the AI model. The app works fully with the classic methods.</string>
     <string name="ai_usage">Last 30 days: %1$d requests, %2$d tokens, estimated cost $%3$s</string>
     <string name="ai_use">Use AI</string>
     <string name="ai_use_off_body">When off, classic methods are used: key sentences are picked from the book and questions are built from its own sentences.</string>

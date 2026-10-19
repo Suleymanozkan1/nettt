@@ -166,8 +166,8 @@ fun AiScreen(onBack: () -> Unit, vm: AiViewModel = hiltViewModel()) {
                     }
                 }
 
-                SectionHeader(stringResource(R.string.ai_models), Modifier.padding(top = 4.dp))
-                ModelCatalog.all.forEach { spec ->
+                if (s.supported) SectionHeader(stringResource(R.string.ai_models), Modifier.padding(top = 4.dp))
+                if (s.supported) ModelCatalog.all.forEach { spec ->
                     ModelOption(spec, s, roomOk = vm.hasRoomFor(spec), onSelect = { vm.select(spec) }, onDelete = { vm.delete(spec) })
                 }
 
@@ -218,6 +218,14 @@ private fun StatusHero(s: AiState, onDownload: () -> Unit, onCancel: () -> Unit)
             )
             val d = s.download
             when {
+                !s.supported || s.selected == null -> {
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        stringResource(if (!s.supported) R.string.ai_unsupported_cpu else R.string.ai_unsupported_ram, "%.1f".format(s.ramGb)),
+                        style = MaterialTheme.typography.bodySmall, color = onHero,
+                        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(Color.Black.copy(alpha = 0.18f)).padding(10.dp),
+                    )
+                }
                 d is AiState.Download.Running || d is AiState.Download.Waiting -> {
                     Spacer(Modifier.height(18.dp))
                     val running = d as? AiState.Download.Running

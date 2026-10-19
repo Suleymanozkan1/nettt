@@ -63,6 +63,8 @@
     <string name="ai_tier_light">Hafif</string>
     <string name="ai_tier_recommended">Önerilen</string>
     <string name="ai_title">Yapay zekâ asistanı</string>
+    <string name="ai_unsupported_cpu">Bu telefonun işlemcisi (32 bit) yapay zekâ modelini çalıştıramıyor. Uygulama klasik yöntemlerle tam çalışır.</string>
+    <string name="ai_unsupported_ram">Bu telefonun belleği (%1$s GB) yapay zekâ modeli için yetersiz. Uygulama klasik yöntemlerle tam çalışır.</string>
     <string name="ai_usage">Son 30 gün: %1$d istek, %2$d token, tahmini maliyet $%3$s</string>
     <string name="ai_use">Yapay zekâyı kullan</string>
     <string name="ai_use_off_body">Kapalıyken klasik yöntemler kullanılır: kitaptaki önemli cümleler seçilir, sorular kitabın kendi cümlelerinden üretilir.</string>

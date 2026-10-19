@@ -13,6 +13,8 @@ import javax.inject.Singleton
 
 /** What the UI shows about the on-device AI: which model, whether it is there, and download progress. */
 data class AiState(
+    /** False on phones the engine cannot run on (32-bit CPUs). */
+    val supported: Boolean,
     val ramGb: Double,
     val enabled: Boolean,
     /** The model the user picked, or the one recommended for this phone. */
@@ -44,9 +46,9 @@ class ModelManager @Inject constructor(
     val ramGb: Double by lazy { runCatching { models.deviceRamGb() }.getOrDefault(0.0) }
 
     val state: Flow<AiState> = combine(settings.settings, models.installed, scheduler.modelDownloadInfo()) { s, installed, infos ->
-        val recommended = ModelCatalog.recommended(ramGb)
-        val selected = ModelCatalog.byId(s.onDeviceModel) ?: recommended
-        AiState(ramGb, s.aiMode == AiMode.ON_DEVICE, selected, recommended, installed, download(infos.lastOrNull(), s.onDeviceModel.ifBlank { selected?.id.orEmpty() }))
+        val recommended = if (models.supported) ModelCatalog.recommended(ramGb) else null
+        val selected = if (models.supported) ModelCatalog.byId(s.onDeviceModel) ?: recommended else null
+        AiState(models.supported, ramGb, s.aiMode == AiMode.ON_DEVICE, selected, recommended, installed, download(infos.lastOrNull(), s.onDeviceModel.ifBlank { selected?.id.orEmpty() }))
     }.onEach { if (it.download == null) models.refresh() }
 
     private fun download(info: WorkInfo?, fallbackId: String): AiState.Download? {

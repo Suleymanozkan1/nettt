@@ -142,6 +142,24 @@ Model özetinden:
 
 > This chapter introduces the forgetting curve, which shows how quickly learned material decays over time. Hermann Ebbinghaus first documented this by observing that most information learned quickly is lost shortly after initial study. The rate at which information fades is not constant; it is influenced by the material's relevance, how well it connects to prior knowledge, and its emotional impact. The key takeaway is that to combat this natural decay, strategic review is essential. The forgetting curve models the rapid loss of learned information. Forgetting rates depend on information meaning,…
 
+### Qwen3 0.6B (hafif model, 3–4 GB RAM'li telefonlar), Türkçe kitap
+
+| Yöntem | Kelime | Kavram kapsamı (/5) | Tekrar (Jaccard ort.) | Kitapta olmayan sayı/isim | Doğrulanan alıntı | Süre |
+|---|---|---|---|---|---|---|
+| Eski: frekans (yapay zekâsız) | 107 | 5 | 0.043 | 0 | — | 56 ms |
+| Yeni: TextRank (yapay zekâsız) | 103 | 5 | 0.048 | 0 | — | 15 ms |
+| Telefon modeli (qwen3-06b, map-reduce) | 204 | 5 | 0.031 | 6 | 0/0 | 377104 ms |
+
+- Bölüm analizi: 5/5 bölüm modelle, kalan yapay zekâsız yöntemle (geçersiz çıktı → otomatik yerel yedek).
+- Özet uyarıları: Kitapta geçmeyen ifadeler: 0, 1, 2, 3, 4, Diferençli. Bunlar modelin çıkarımı ya da hatası olabilir.
+- Quiz: 4 geçerli soru, yapay zekâ: true (143961 ms)
+- Soru-cevap ("Aralıklı tekrar neden işe yarar?"): yapay zekâ: true, kaynak: [0, 2], kitapta: true (23273 ms)
+
+Hafif model de bütün görevleri yapay zekâyla tamamladı (bölüm analizleri, ilk ölçümde şema karışıklığı yüzünden 0/5 iken
+`LenientChapterAnalysis` ile 5/5). Ancak özette yazım hataları ("snavdan"), kitapta olmayan bir ifade ("Diferençli") ve
+özet malzemesinden kopyalanan "[0] Kavramlar:" işaretleri görüldü; sadakat denetimi bunları işaretledi. Bu yüzden yalnızca
+Gemma 4'ün sığmadığı telefonlarda önerilir.
+
 ### Yorum
 
 - **Gemma 4 E2B** her iki kitapta 5/5 bölümü ilk denemede geçerli JSON ile analiz etti, özet 5/5 kavramı kapsadı ve

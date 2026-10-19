@@ -87,6 +87,7 @@ class ScreenshotTour {
         assumeTrue(out != null); out!!.mkdirs()
         hilt.inject()
         runBlocking { settings.clear() }
+        org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build::class.java, "SUPPORTED_ABIS", arrayOf("arm64-v8a"))
         ActivityScenario.launch(MainActivity::class.java).also { scenario = it }.use {
             waitFor("Türkçe")
             if (prefix == "en_") { click("English"); pause(1500) }

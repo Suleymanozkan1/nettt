@@ -477,6 +477,8 @@ S = {
 "ai_fallback_note": ("Model bir şeyi üretemezse uygulama ücretli bir servise geçmez; klasik yönteme döner ve bunu belirtir.", "If the model can't produce something, the app never switches to a paid service; it falls back to the classic method and says so."),
 "ai_mode_mock": ("Deneme sağlayıcısı (yalnızca test derlemesi)", "Mock provider (debug builds only)"),
 "ask_empty_body": ("İlgili bölümler kitapta aranır. Yapay zekâ açıksa cevabı o yazar; kapalıysa kitaptaki en uygun cümleler gösterilir.", "Relevant passages are found in the book. With AI on, it writes the answer; otherwise the best matching sentences from the book are shown."),
+"ai_unsupported_cpu": ("Bu telefonun işlemcisi (32 bit) yapay zekâ modelini çalıştıramıyor. Uygulama klasik yöntemlerle tam çalışır.", "This phone's processor (32-bit) can't run the AI model. The app works fully with the classic methods."),
+"ai_unsupported_ram": ("Bu telefonun belleği (%1$s GB) yapay zekâ modeli için yetersiz. Uygulama klasik yöntemlerle tam çalışır.", "This phone's memory (%1$s GB) is too small for the AI model. The app works fully with the classic methods."),
 }
 PLURALS = {
 "minutes": (("%d dakika sonra", "%d dakika sonra"), ("in %d minute", "in %d minutes")),

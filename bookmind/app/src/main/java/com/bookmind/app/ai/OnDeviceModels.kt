@@ -58,6 +58,9 @@ class OnDeviceModels @Inject constructor(@ApplicationContext private val context
 
     private fun scanInstalled() = ModelCatalog.all.filter(::isInstalled).map { it.id }.toSet()
 
+    /** The engine ships for 64-bit ARM phones (and x86_64 emulators); older 32-bit phones use the classic methods. */
+    val supported: Boolean get() = android.os.Build.SUPPORTED_ABIS.any { it == "arm64-v8a" || it == "x86_64" }
+
     /** Total RAM in GB as Android reports it ("6 GB" phones report about 5.5). */
     fun deviceRamGb(): Double {
         val info = ActivityManager.MemoryInfo()
@@ -115,8 +118,13 @@ class OnDeviceModels @Inject constructor(@ApplicationContext private val context
         val f = file(spec)
         check(isInstalled(spec)) { "model file missing" }
         // CPU works on every arm64 phone; the engine writes a one-time weight cache to the (clearable) cache dir.
-        val e = Engine(EngineConfig(modelPath = f.absolutePath, backend = Backend.CPU(), maxNumTokens = spec.contextTokens, cacheDir = context.cacheDir.path))
-        e.initialize()
+        val e = try {
+            Engine(EngineConfig(modelPath = f.absolutePath, backend = Backend.CPU(), maxNumTokens = spec.contextTokens, cacheDir = context.cacheDir.path))
+                .also { it.initialize() }
+        } catch (e: LinkageError) {
+            // Native library missing for this CPU: report it as an ordinary failure so the classic method takes over.
+            throw IllegalStateException("on-device engine unavailable on this phone", e)
+        }
         engine = e
         engineModel = spec.id
         return e

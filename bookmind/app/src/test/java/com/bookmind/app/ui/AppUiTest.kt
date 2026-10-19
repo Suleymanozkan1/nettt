@@ -196,7 +196,8 @@ class AppUiTest {
     }
 
     @Test fun ai_assistant_offers_a_free_on_device_model_from_home_and_profile() {
-        // An 8 GB phone: the recommended model fits, the 12 GB one does not.
+        // An 8 GB arm64 phone: the recommended model fits, the 12 GB one does not.
+        org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build::class.java, "SUPPORTED_ABIS", arrayOf("arm64-v8a"))
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         shadowOf(am).setMemoryInfo(android.app.ActivityManager.MemoryInfo().apply { totalMem = 8L * 1_073_741_824 })
         ready()

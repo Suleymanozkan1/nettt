@@ -59,7 +59,7 @@ object AiModule {
                 AiMode.MOCK -> mock
                 // Until the model is downloaded the classic algorithms are used; that is expected, not an error.
                 AiMode.ON_DEVICE -> (ModelCatalog.byId(s.onDeviceModel) ?: ModelCatalog.recommended(models.deviceRamGb()))
-                    ?.takeIf(models::isInstalled)
+                    ?.takeIf { models.supported && models.isInstalled(it) }
                     ?.let { spec ->
                         onDevice.getOrPut(spec.id) {
                             OnDeviceProvider(spec.displayName, spec.contextTokens) { prompt -> models.generate(spec, prompt) }
