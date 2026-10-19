@@ -39,6 +39,7 @@ import com.bookmind.app.AppState
 import com.bookmind.app.R
 import com.bookmind.app.ui.analytics.AnalyticsScreen
 import com.bookmind.app.ui.ask.AskScreen
+import com.bookmind.app.ui.ai.AiScreen
 import com.bookmind.app.ui.book.AddBookScreen
 import com.bookmind.app.ui.book.BookDetailScreen
 import com.bookmind.app.ui.book.ChapterScreen
@@ -136,6 +137,7 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
             onOpenConcept = { nav.navigate(Routes.concept(it)) },
             onOpenQuizResult = { nav.navigate(Routes.quizResult(it)) },
             onOpenPlan = { nav.navigate(Routes.plan(it)) },
+            onOpenAi = { nav.navigate(Routes.AI) },
         )
     }
     composable(Routes.LIBRARY) {
@@ -216,5 +218,6 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
         AskScreen(entry.arguments!!.getString("bookId")!!, onBack = back, onOpenChapter = { nav.navigate(Routes.chapter(it)) })
     }
     composable(Routes.NOTIFICATIONS) { NotificationSettingsScreen(onBack = back) }
-    composable(Routes.SETTINGS) { SettingsScreen(onNotifications = { nav.navigate(Routes.NOTIFICATIONS) }) }
+    composable(Routes.SETTINGS) { SettingsScreen(onNotifications = { nav.navigate(Routes.NOTIFICATIONS) }, onAi = { nav.navigate(Routes.AI) }) }
+    composable(Routes.AI) { AiScreen(onBack = back) }
 }

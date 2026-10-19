@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
+import com.bookmind.app.ui.components.AppSlider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -153,9 +153,9 @@ fun QuizSetupScreen(bookId: String, onBack: () -> Unit, onCreated: (String) -> U
                     }
                 }
                 SetupSection(stringResource(R.string.question_count, count.toInt())) {
-                    Slider(count, { count = it }, valueRange = 3f..25f, steps = 21)
+                    AppSlider(count, { count = it }, valueRange = 3f..25f, steps = 21)
                     Text(stringResource(R.string.difficulty_value, difficulty.toInt()), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
-                    Slider(difficulty, { difficulty = it }, valueRange = 1f..5f, steps = 3)
+                    AppSlider(difficulty, { difficulty = it }, valueRange = 1f..5f, steps = 3)
                     SwitchRow(Icons.Filled.Timer, stringResource(R.string.time_limit), timed) { timed = it }
                     SwitchRow(Icons.Filled.VisibilityOff, stringResource(R.string.spoiler_free), spoilerFree) { spoilerFree = it }
                 }

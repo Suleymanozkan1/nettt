@@ -136,7 +136,7 @@ class LibraryRepository @Inject constructor(
             db.openHelper.writableDatabase.execSQL("DELETE FROM learning_items WHERE bookId = ?", arrayOf(bookId))
             db.openHelper.writableDatabase.execSQL("DELETE FROM summaries WHERE bookId = ?", arrayOf(bookId))
             db.openHelper.writableDatabase.execSQL("DELETE FROM quizzes WHERE bookId = ?", arrayOf(bookId))
-            db.openHelper.writableDatabase.execSQL("UPDATE user_notes SET deletedAt = ?, updatedAt = ? WHERE bookId = ?", arrayOf(now, now, bookId))
+            db.openHelper.writableDatabase.execSQL("UPDATE user_notes SET deletedAt = ?, updatedAt = ? WHERE bookId = ?", arrayOf<Any>(now, now, bookId))
             db.books().upsert(book.copy(deletedAt = now, updatedAt = now, processingStatus = ProcessingStatus.READY))
         }
         withContext(Dispatchers.IO) { files.deleteBook(bookId) }

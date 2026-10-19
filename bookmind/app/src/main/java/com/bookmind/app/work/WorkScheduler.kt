@@ -28,6 +28,22 @@ class WorkScheduler @Inject constructor(private val workManager: WorkManager) {
         workManager.enqueueUniqueWork(processingName(bookId), ExistingWorkPolicy.KEEP, request)
     }
 
+    /** Downloads an on-device model; needs a connection and storage, survives app restarts and resumes. */
+    fun downloadModel(modelId: String, tag: String) {
+        val request = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
+            .setInputData(workDataOf(ModelDownloadWorker.KEY_MODEL to modelId))
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 20, TimeUnit.SECONDS)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).setRequiresStorageNotLow(true).build())
+            .addTag(TAG_MODEL)
+            .addTag(tag)
+            .build()
+        workManager.enqueueUniqueWork(MODEL_DOWNLOAD, ExistingWorkPolicy.REPLACE, request)
+    }
+
+    fun cancelModelDownload() = workManager.cancelUniqueWork(MODEL_DOWNLOAD)
+
+    fun modelDownloadInfo() = workManager.getWorkInfosForUniqueWorkFlow(MODEL_DOWNLOAD)
+
     fun cancelBook(bookId: String) = workManager.cancelUniqueWork(processingName(bookId))
 
     fun processingInfo(bookId: String) = workManager.getWorkInfosForUniqueWorkFlow(processingName(bookId))
@@ -67,6 +83,8 @@ class WorkScheduler @Inject constructor(private val workManager: WorkManager) {
     companion object {
         const val TAG_PROCESSING = "processing"
         const val TAG_REMINDER = "reminder"
+        const val TAG_MODEL = "model"
+        const val MODEL_DOWNLOAD = "model-download"
         const val REMINDER = "reminder"
         const val SYNC_NOW = "sync-now"
         const val SYNC_PERIODIC = "sync-periodic"

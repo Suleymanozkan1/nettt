@@ -15,12 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lightbulb
@@ -41,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -81,6 +83,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -94,7 +97,13 @@ class HomeViewModel @Inject constructor(
     private val plans: PlanRepository,
     quizzes: QuizRepository,
     db: BookMindDatabase,
+    models: com.bookmind.app.ai.ModelManager,
+    private val settings: com.bookmind.app.data.settings.SettingsRepository,
 ) : ViewModel() {
+    val ai = models.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val aiPromptDismissed = settings.settings.map { it.aiPromptDismissed }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    fun dismissAiPrompt() = viewModelScope.launch { settings.update { it.copy(aiPromptDismissed = true) } }
+
     private val _home = MutableStateFlow<InsightsRepository.Home?>(null)
     val home = _home.asStateFlow()
 
@@ -134,12 +143,15 @@ fun HomeScreen(
     onOpenConcept: (String) -> Unit,
     onOpenQuizResult: (String) -> Unit,
     onOpenPlan: (String) -> Unit,
+    onOpenAi: () -> Unit,
     vm: HomeViewModel = hiltViewModel(),
 ) {
     LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose { } }
     val home by vm.home.collectAsStateWithLifecycle()
     val quizzes by vm.recentQuizzes.collectAsStateWithLifecycle()
     val tasks by vm.todayTasks.collectAsStateWithLifecycle()
+    val ai by vm.ai.collectAsStateWithLifecycle()
+    val aiDismissed by vm.aiPromptDismissed.collectAsStateWithLifecycle()
     val today = DateTimeFormatter.ofPattern("d MMMM, EEEE", AppLanguage.locale).format(LocalDateTime.now())
     val cs = MaterialTheme.colorScheme
     val x = MaterialTheme.extended
@@ -200,6 +212,12 @@ fun HomeScreen(
                     StatTile(Icons.Filled.Style, (h.dueToday + h.newAvailable).toString(), stringResource(R.string.stat_due), x.success, x.successContainer, Modifier.weight(1f))
                 }
             }
+            ai?.let { a ->
+                // Offer the free on-device AI until it is installed; keep showing progress while it downloads.
+                if (a.download != null || (!a.ready && a.selected != null && !aiDismissed)) {
+                    item { AiPromoCard(a, onOpenAi, onDismiss = vm::dismissAiPrompt) }
+                }
+            }
             if (tasks.isNotEmpty()) {
                 item { SectionHeader(stringResource(R.string.home_plan_today)) }
                 item {
@@ -213,10 +231,8 @@ fun HomeScreen(
                 AppCard(Modifier.fillMaxWidth()) {
                     EmptyState(stringResource(R.string.library_empty_title), stringResource(R.string.library_empty_body), actionLabel = stringResource(R.string.add_book), onAction = onAddBook)
                 }
-            } else item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(h.continueBooks, key = { it.id }) { b -> ContinueBook(b, { onOpenBook(b.id) }, { onOpenPlan(b.id) }) }
-                }
+            } else items(h.continueBooks.take(3), key = { it.id }) { b ->
+                ContinueBook(b, { onOpenBook(b.id) }, { onOpenPlan(b.id) })
             }
             if (h.weakConcepts.isNotEmpty()) {
                 item { SectionHeader(stringResource(R.string.home_weak)) }
@@ -289,17 +305,60 @@ private fun TaskRow(t: PlanTaskEntity, onToggle: () -> Unit) {
 
 @Composable
 private fun ContinueBook(b: BookEntity, onOpen: () -> Unit, onPlan: () -> Unit) {
-    Column(Modifier.width(132.dp)) {
-        BookCover(b.title, b.author, b.id, Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(onClick = onOpen))
-        Spacer(Modifier.height(8.dp))
-        Text(b.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Row(
-            Modifier.padding(top = 6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer).clickable(onClick = onPlan).padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.ViewTimeline, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
-            Spacer(Modifier.width(4.dp))
-            Text(stringResource(R.string.plan), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+    val cs = MaterialTheme.colorScheme
+    AppCard(Modifier.fillMaxWidth().padding(bottom = 10.dp), onClick = onOpen, contentPadding = PaddingValues(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BookCover(b.title, b.author, b.id, Modifier.width(64.dp).clip(MaterialTheme.shapes.small))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(b.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                b.author?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (b.chapterCount > 0) Pill(pluralStringResource(R.plurals.chapters_n, b.chapterCount, b.chapterCount), color = cs.onSurfaceVariant, container = cs.surfaceContainerHigh)
+                    Row(
+                        Modifier.clip(CircleShape).background(cs.primaryContainer).clickable(onClick = onPlan).padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.ViewTimeline, null, Modifier.size(14.dp), tint = cs.onPrimaryContainer)
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.plan), style = MaterialTheme.typography.labelMedium, color = cs.onPrimaryContainer)
+                    }
+                }
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = cs.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun AiPromoCard(a: com.bookmind.app.ai.AiState, onOpen: () -> Unit, onDismiss: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val context = androidx.compose.ui.platform.LocalContext.current
+    AppCard(Modifier.fillMaxWidth().padding(top = 14.dp), onClick = onOpen) {
+        Row(verticalAlignment = Alignment.Top) {
+            com.bookmind.app.ui.components.IconBadge(Icons.Filled.AutoAwesome, cs.onPrimary, cs.primary, size = 44.dp, iconSize = 24.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.ai_promo_title), style = MaterialTheme.typography.titleMedium)
+                val running = a.download as? com.bookmind.app.ai.AiState.Download.Running
+                if (a.download != null) {
+                    Text(com.bookmind.app.ui.ai.aiStatusText(a), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    com.bookmind.app.ui.components.ProgressBar(running?.fraction ?: 0f, Modifier.fillMaxWidth())
+                } else {
+                    Text(stringResource(R.string.ai_promo_body), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        com.bookmind.app.ui.components.PrimaryButton(
+                            stringResource(R.string.ai_promo_action) + " · " + android.text.format.Formatter.formatShortFileSize(context, a.selected!!.bytes),
+                            onOpen, icon = Icons.Filled.AutoAwesome,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        com.bookmind.app.ui.components.GhostButton(stringResource(R.string.ai_not_now), onDismiss, color = cs.onSurfaceVariant)
+                    }
+                }
+            }
         }
     }
 }

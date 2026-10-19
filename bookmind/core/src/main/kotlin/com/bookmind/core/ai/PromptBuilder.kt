@@ -95,6 +95,7 @@ object PromptBuilder {
                 Book: "$bookTitle". $instructions $lengthHint
                 ${if (spoilerFree) "Do not reveal plot twists or the ending." else ""}
                 Write an original, transformative summary; do not just repeat sentences from the book.
+                Fill only the fields this summary type needs; leave the others as empty arrays or null.
                 Return JSON: {"type":"${type.name.lowercase()}","title":string,
                 "sections":[{"heading":string,"body":string,"bullets":[string],"sources":[{"chapterIndex":int (0-based),"chapterTitle":string,"quote":string|null}]}],
                 "ideas":[{"idea":string,"explanation":string,"whyItMatters":string,"support":string,"example":string,"dailyUse":string,"memoryTip":string,"source":{"chapterIndex":int}|null}],
@@ -103,7 +104,7 @@ object PromptBuilder {
                 The material below is a digest of chapter analyses, each prefixed with [chapterIndex].
                 ${bookBlock("digest", material)}
             """.trimIndent(),
-            maxOutputTokens = when (length) { SummaryLength.SHORT -> 1_200; SummaryLength.MEDIUM -> 2_400; SummaryLength.LONG -> 4_000 },
+            maxOutputTokens = when (length) { SummaryLength.SHORT -> 2_000; SummaryLength.MEDIUM -> 3_000; SummaryLength.LONG -> 4_500 },
         )
     }
 

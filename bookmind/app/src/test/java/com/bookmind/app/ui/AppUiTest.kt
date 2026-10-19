@@ -194,4 +194,29 @@ class AppUiTest {
         waitForText(s(R.string.ask_sources))
         waitForText("Aktif Hatırlama")
     }
+
+    @Test fun ai_assistant_offers_a_free_on_device_model_from_home_and_profile() {
+        // An 8 GB phone: the recommended model fits, the 12 GB one does not.
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        shadowOf(am).setMemoryInfo(android.app.ActivityManager.MemoryInfo().apply { totalMem = 8L * 1_073_741_824 })
+        ready()
+        launch()
+        // Home offers the one-tap setup until a model is installed; "Not now" hides it for good.
+        waitForText(s(R.string.ai_promo_title))
+        compose.onNodeWithText(s(R.string.ai_not_now)).performClick()
+        eventually { runBlocking { settings.current().aiPromptDismissed } }
+        clickTab(R.string.tab_profile)
+        waitForText(s(R.string.ai_title))
+        compose.onNodeWithText(s(R.string.ai_status_not_installed)).assertExists()
+        compose.onNodeWithText(s(R.string.ai_title)).performScrollTo().performClick()
+        waitForText(s(R.string.ai_hero_title))
+        compose.onAllNodesWithText("Gemma 4 E2B", substring = true).onFirst().assertExists()
+        compose.onNodeWithText(s(R.string.ai_model_too_big, "%.1f".format(8.0))).performScrollTo().assertExists()
+        compose.onNodeWithText("Qwen3 0.6B").performScrollTo().assertExists()
+        compose.onNodeWithText(s(R.string.ai_privacy_2)).performScrollTo().assertExists()
+        // Picking another model only changes the selection; nothing is downloaded without a tap on Download.
+        compose.onNodeWithText("Qwen3 0.6B").performClick()
+        eventually { runBlocking { settings.current().onDeviceModel } == "qwen3-0.6b" }
+        assertEquals(com.bookmind.app.data.settings.AiMode.ON_DEVICE, runBlocking { settings.current().aiMode })
+    }
 }

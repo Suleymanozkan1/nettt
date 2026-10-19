@@ -2,106 +2,133 @@ package com.bookmind.app.ai
 
 import android.app.ActivityManager
 import android.content.Context
-import android.net.Uri
-import android.provider.OpenableColumns
-import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import android.os.StatFs
+import com.bookmind.core.ai.OnDevicePrompt
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Content
+import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.ThinkingConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Open-weights model files the user imported, and the MediaPipe LLM Inference engine that runs them on the
- * phone (free, offline). The app never downloads a model itself: the user picks a file they obtained under
- * the model's own licence (e.g. Gemma 3 1B or Qwen2.5 1.5B in .task format).
+ * The downloaded model files and the LiteRT-LM engine that runs them on the phone (free, offline; no text
+ * leaves the device). The engine is loaded on first use and released after a few idle minutes so a 1–2 GB model
+ * does not stay in memory while the app is in the background.
  */
 @Singleton
 class OnDeviceModels @Inject constructor(@ApplicationContext private val context: Context) {
-    class ImportException(val reason: Reason) : IOException(reason.name) {
-        enum class Reason { UNSUPPORTED, TOO_LARGE, UNREADABLE }
-    }
-
     private val dir get() = File(context.filesDir, "models").apply { mkdirs() }
     private val lock = Mutex()
-    private var engine: LlmInference? = null
-    private var engineKey: String? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var engine: Engine? = null
+    private var engineModel: String? = null
+    private var idleRelease: Job? = null
 
-    fun file(name: String): File? = name.takeIf { it.isNotBlank() }?.let { File(dir, it) }?.takeIf { it.isFile }
+    private val _installed = MutableStateFlow(scanInstalled())
+    /** Ids of the catalog models that are fully downloaded and verified. */
+    val installed: StateFlow<Set<String>> = _installed.asStateFlow()
 
-    fun installed(): List<File> = dir.listFiles()?.filter { it.isFile && it.extension in EXTENSIONS }.orEmpty().sortedBy { it.name }
+    fun file(spec: ModelSpec): File = File(dir, spec.fileName)
 
-    /** Total RAM in GB; 1–2B models need roughly 4 GB free, so phones under 6 GB get a warning. */
+    /** Partial download kept between attempts so an interrupted download resumes instead of restarting. */
+    fun partFile(spec: ModelSpec): File = File(dir, spec.fileName + ".part")
+
+    fun isInstalled(spec: ModelSpec): Boolean = file(spec).let { it.isFile && it.length() == spec.bytes }
+
+    fun refresh() { _installed.value = scanInstalled() }
+
+    private fun scanInstalled() = ModelCatalog.all.filter(::isInstalled).map { it.id }.toSet()
+
+    /** Total RAM in GB as Android reports it ("6 GB" phones report about 5.5). */
     fun deviceRamGb(): Double {
         val info = ActivityManager.MemoryInfo()
         (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(info)
         return info.totalMem / 1_073_741_824.0
     }
 
-    /** Copies the picked file into app storage (streamed; models are hundreds of MB). Returns the stored name. */
-    suspend fun import(uri: Uri): String = withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-            if (c.moveToFirst()) c.getString(0) else null
-        } ?: uri.lastPathSegment ?: "model.task"
-        val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120)
-        if (safe.substringAfterLast('.', "").lowercase() !in EXTENSIONS) throw ImportException(ImportException.Reason.UNSUPPORTED)
-        val target = File(dir, safe)
-        val tmp = File(dir, "$safe.part")
-        try {
-            resolver.openInputStream(uri)?.use { input ->
-                tmp.outputStream().use { out ->
-                    val buf = ByteArray(1 shl 16)
-                    var total = 0L
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        total += n
-                        if (total > MAX_BYTES) throw ImportException(ImportException.Reason.TOO_LARGE)
-                        out.write(buf, 0, n)
-                    }
-                }
-            } ?: throw ImportException(ImportException.Reason.UNREADABLE)
-            if (!tmp.renameTo(target)) throw ImportException(ImportException.Reason.UNREADABLE)
-        } finally {
-            tmp.delete()
-        }
-        safe
-    }
+    /** Free bytes on the app's internal storage. */
+    fun freeBytes(): Long = runCatching { StatFs(context.filesDir.path).availableBytes }.getOrDefault(Long.MAX_VALUE)
 
-    suspend fun delete(name: String) = lock.withLock {
-        if (engineKey?.startsWith(name + "|") == true) { engine?.close(); engine = null; engineKey = null }
-        file(name)?.delete()
+    /** Room needed to download [spec]: the file, the engine's first-run cache and a safety margin. */
+    fun neededBytes(spec: ModelSpec): Long = spec.bytes - partFile(spec).length().coerceAtMost(spec.bytes) + spec.bytes / 3 + 300_000_000
+
+    suspend fun delete(spec: ModelSpec) = lock.withLock {
+        if (engineModel == spec.id) closeEngine()
+        file(spec).delete()
+        partFile(spec).delete()
+        context.cacheDir.listFiles { f -> f.name.startsWith(spec.fileName) }?.forEach { it.delete() }
+        refresh()
     }
 
     /**
-     * Runs one prompt. The engine is created on first use and kept while the same model/context is selected;
-     * loading a model takes seconds and several hundred MB, so it is not recreated per request.
+     * Runs one prompt in a fresh conversation (no history: every request is self-contained). Output is not
+     * grammar-constrained: with Gemma 4 that made generation degenerate, while plain decoding gives clean JSON that
+     * the pipeline extracts and validates (one corrective retry on invalid JSON).
      */
-    suspend fun generate(name: String, maxTokens: Int, prompt: String): String = withContext(Dispatchers.Default) {
+    suspend fun generate(spec: ModelSpec, prompt: OnDevicePrompt): String = withContext(Dispatchers.Default) {
         lock.withLock {
-            val f = file(name) ?: throw IllegalStateException("model file missing")
-            val key = "$name|$maxTokens"
-            if (engineKey != key) {
-                engine?.close()
-                engine = null
-                val options = LlmInference.LlmInferenceOptions.builder()
-                    .setModelPath(f.absolutePath)
-                    .setMaxTokens(maxTokens)
-                    .build()
-                engine = LlmInference.createFromOptions(context, options)
-                engineKey = key
+            idleRelease?.cancel()
+            try {
+                val e = engineFor(spec)
+                val config = ConversationConfig(
+                    systemInstruction = Contents.of(prompt.system),
+                    samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = prompt.temperature),
+                    maxOutputToken = prompt.maxOutputTokens,
+                    // Answers are short and structured; a reasoning preamble would only cost time and battery.
+                    thinkingConfig = ThinkingConfig(enableThinking = false),
+                )
+                e.createConversation(config).use { c ->
+                    c.sendMessage(prompt.user)
+                        .contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
+                }
+            } finally {
+                idleRelease = scope.launch {
+                    delay(IDLE_RELEASE_MS)
+                    lock.withLock { closeEngine() }
+                }
             }
-            engine!!.generateResponse(prompt)
         }
     }
 
+    private fun engineFor(spec: ModelSpec): Engine {
+        engine?.takeIf { engineModel == spec.id }?.let { return it }
+        closeEngine()
+        val f = file(spec)
+        check(isInstalled(spec)) { "model file missing" }
+        // CPU works on every arm64 phone; the engine writes a one-time weight cache to the (clearable) cache dir.
+        val e = Engine(EngineConfig(modelPath = f.absolutePath, backend = Backend.CPU(), maxNumTokens = spec.contextTokens, cacheDir = context.cacheDir.path))
+        e.initialize()
+        engine = e
+        engineModel = spec.id
+        return e
+    }
+
+    private fun closeEngine() {
+        runCatching { engine?.close() }
+        engine = null
+        engineModel = null
+    }
+
     companion object {
-        val EXTENSIONS = setOf("task", "litertlm", "bin")
-        const val MAX_BYTES = 6L * 1024 * 1024 * 1024
+        const val IDLE_RELEASE_MS = 3 * 60_000L
     }
 }

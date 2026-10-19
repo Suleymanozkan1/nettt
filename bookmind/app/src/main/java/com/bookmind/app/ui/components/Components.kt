@@ -573,3 +573,17 @@ fun formatInterval(ms: Long, minutesLabel: (Long) -> String, hoursLabel: (Long) 
     ms < 86_400_000 -> hoursLabel(ms / 3_600_000)
     else -> daysLabel(ms / 86_400_000)
 }
+
+/** Material slider without step tick dots (they read as noise on narrow screens); steps still snap. */
+@Composable
+fun AppSlider(value: Float, onValueChange: (Float) -> Unit, valueRange: ClosedFloatingPointRange<Float>, steps: Int, modifier: Modifier = Modifier) {
+    androidx.compose.material3.Slider(
+        value, onValueChange, modifier, valueRange = valueRange, steps = steps,
+        colors = androidx.compose.material3.SliderDefaults.colors(
+            activeTickColor = Color.Transparent,
+            inactiveTickColor = Color.Transparent,
+            inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ),
+    )
+}
+

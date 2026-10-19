@@ -128,6 +128,7 @@ dependencies {
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    ksp(libs.kotlin.metadata.jvm)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.hilt.work)
     ksp(libs.androidx.hilt.compiler)
@@ -138,7 +139,7 @@ dependencies {
     implementation(libs.pdfbox.android)
     implementation(libs.mlkit.text.recognition)
     // On-device LLM runtime (Apache-2.0). The model file is imported by the user; nothing is downloaded by the app.
-    implementation(libs.mediapipe.genai)
+    implementation(libs.litertlm.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
@@ -153,6 +154,7 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.hilt.android.testing)
     kspTest(libs.hilt.compiler)
+    kspTest(libs.kotlin.metadata.jvm)
 }
 
 tasks.withType<Test>().configureEach {

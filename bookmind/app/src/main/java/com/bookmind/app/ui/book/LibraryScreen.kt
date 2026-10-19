@@ -127,7 +127,7 @@ private fun pluralStringCount(n: Int) = androidx.compose.ui.res.pluralStringReso
 @Composable
 private fun BookTile(book: BookEntity, onClick: () -> Unit) {
     val x = MaterialTheme.extended
-    Column(Modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onClick)) {
+    Column(Modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onClick).padding(bottom = 12.dp)) {
         BookCover(book.title, book.author, book.id, Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
         Text(book.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)

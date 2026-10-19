@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Notifications
+import com.bookmind.app.ui.ai.aiStatusText
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -37,7 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
+import com.bookmind.app.ui.components.AppSlider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -105,57 +106,10 @@ class SettingsViewModel @Inject constructor(
     private val syncEngine: com.bookmind.app.sync.SyncEngine,
     db: BookMindDatabase,
     clock: AppClock,
-    private val models: com.bookmind.app.ai.OnDeviceModels,
-    private val http: okhttp3.OkHttpClient,
+    models: com.bookmind.app.ai.ModelManager,
 ) : ViewModel() {
     val cloudAvailable = com.bookmind.app.BuildConfig.CLOUD_AI_ENABLED && auth.isBackendConfigured
-    val ramGb = runCatching { models.deviceRamGb() }.getOrDefault(0.0)
-    private val _installed = MutableStateFlow(listModels())
-    val installedModels = _installed.asStateFlow()
-    private val _importing = MutableStateFlow(false)
-    val importing = _importing.asStateFlow()
-    private val _check = MutableStateFlow<ComputerCheck>(ComputerCheck.Idle)
-    val computerCheck = _check.asStateFlow()
-
-    private fun listModels() = models.installed().map { it.name to it.length() }
-
-    fun importModel(uri: android.net.Uri) = viewModelScope.launch {
-        _importing.value = true
-        val result = runCatching { models.import(uri) }
-        _importing.value = false
-        result.onSuccess { name -> settings.update { it.copy(onDeviceModel = name) } }
-            .onFailure { e ->
-                val t = com.bookmind.app.data.settings.AppLanguage.text
-                _message.value = when ((e as? com.bookmind.app.ai.OnDeviceModels.ImportException)?.reason) {
-                    com.bookmind.app.ai.OnDeviceModels.ImportException.Reason.UNSUPPORTED -> t.modelUnsupported
-                    com.bookmind.app.ai.OnDeviceModels.ImportException.Reason.TOO_LARGE -> t.modelTooLarge
-                    else -> t.modelUnreadable
-                }
-            }
-        _installed.value = listModels()
-    }
-
-    fun deleteModel(name: String) = viewModelScope.launch {
-        models.delete(name)
-        settings.update { if (it.onDeviceModel == name) it.copy(onDeviceModel = "") else it }
-        _installed.value = listModels()
-    }
-
-    /** Asks the computer's model server which models it has; proves the address works before the user relies on it. */
-    fun testComputer(url: String, model: String) = viewModelScope.launch {
-        _check.value = ComputerCheck.Running
-        _check.value = try {
-            val provider = com.bookmind.core.ai.LocalServerProvider(url, model.ifBlank { "local" }, client = http)
-            ComputerCheck.Ok(provider.listModels())
-        } catch (e: com.bookmind.core.ai.LocalEndpoint.Rejected) {
-            ComputerCheck.Failed(com.bookmind.app.data.settings.AppLanguage.text.let { if (e.problem == com.bookmind.core.ai.LocalEndpoint.Problem.NOT_PRIVATE) it.localOnly else it.invalidAddress })
-        } catch (e: com.bookmind.core.ai.AiException) {
-            ComputerCheck.Failed(com.bookmind.app.data.settings.AppLanguage.text.aiError(e))
-        }
-        (_check.value as? ComputerCheck.Ok)?.models?.singleOrNull()?.let { only ->
-            if (model.isBlank()) settings.update { it.copy(computerModel = only) }
-        }
-    }
+    val ai = models.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val state = settings.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
     val user = users.user.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -217,7 +171,7 @@ private fun Chips(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun SettingsScreen(onNotifications: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(onNotifications: () -> Unit, onAi: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
     val s by vm.state.collectAsStateWithLifecycle()
     val user by vm.user.collectAsStateWithLifecycle()
     val acct by vm.accountState.collectAsStateWithLifecycle()
@@ -275,11 +229,11 @@ fun SettingsScreen(onNotifications: () -> Unit, vm: SettingsViewModel = hiltView
                     }
                     if (s.algorithm == SrsAlgorithm.FSRS) {
                         Text(stringResource(R.string.desired_retention, (s.desiredRetention * 100).toInt()), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
-                        Slider(s.desiredRetention, { v -> vm.update { it.copy(desiredRetention = v) } }, valueRange = 0.75f..0.95f, steps = 3)
+                        AppSlider(s.desiredRetention, { v -> vm.update { it.copy(desiredRetention = v) } }, valueRange = 0.75f..0.95f, steps = 3)
                         Hint(stringResource(R.string.desired_retention_hint))
                     }
                     Text(stringResource(R.string.new_per_day, s.newItemsPerDay), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
-                    Slider(s.newItemsPerDay.toFloat(), { v -> vm.update { it.copy(newItemsPerDay = v.toInt()) } }, valueRange = 0f..50f, steps = 9)
+                    AppSlider(s.newItemsPerDay.toFloat(), { v -> vm.update { it.copy(newItemsPerDay = v.toInt()) } }, valueRange = 0f..50f, steps = 9)
                     Divider()
                     Label(stringResource(R.string.default_teaching_level))
                     Chips { TeachingLevel.entries.forEach { l -> ChoiceChip(s.teachingLevel == l.name, com.bookmind.app.ui.teach.levelLabel(l), { vm.update { it.copy(teachingLevel = l.name) } }) } }
@@ -300,17 +254,17 @@ fun SettingsScreen(onNotifications: () -> Unit, vm: SettingsViewModel = hiltView
                 }
 
                 Group(stringResource(R.string.ai_settings)) {
-                    val models by vm.installedModels.collectAsStateWithLifecycle()
-                    val importing by vm.importing.collectAsStateWithLifecycle()
-                    val check by vm.computerCheck.collectAsStateWithLifecycle()
-                    AiSettingsSection(
-                        s, models, vm.ramGb, importing, check, vm.cloudAvailable,
-                        onUpdate = { t -> vm.update(t) }, onImport = vm::importModel, onDeleteModel = vm::deleteModel, onTestComputer = vm::testComputer,
-                    )
+                    val ai by vm.ai.collectAsStateWithLifecycle()
+                    ListRow(
+                        stringResource(R.string.ai_title),
+                        subtitle = ai?.let { aiStatusText(it) },
+                        icon = Icons.Filled.AutoAwesome,
+                        onClick = onAi,
+                    ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = cs.onSurfaceVariant) }
                     if (vm.cloudAvailable) {
                         Divider()
                         Text(stringResource(R.string.ai_daily_limit, s.dailyAiRequestLimit), style = MaterialTheme.typography.titleSmall)
-                        Slider(s.dailyAiRequestLimit.toFloat(), { v -> vm.update { it.copy(dailyAiRequestLimit = v.toInt()) } }, valueRange = 0f..300f, steps = 11)
+                        AppSlider(s.dailyAiRequestLimit.toFloat(), { v -> vm.update { it.copy(dailyAiRequestLimit = v.toInt()) } }, valueRange = 0f..300f, steps = 11)
                         val tokens = usage.sumOf { (it.inputTokens ?: 0) + (it.outputTokens ?: 0) }
                         val cost = usage.sumOf { it.costMicros ?: 0 } / 1_000_000.0
                         Hint(stringResource(R.string.ai_usage, usage.size, tokens, "%.3f".format(cost)))

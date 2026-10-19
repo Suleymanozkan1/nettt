@@ -62,7 +62,7 @@ class LearningAi(
         }
 
         @Suppress("NAME_SHADOWING")
-        val request = fitToBudget(request, provider.inputBudgetChars)
+        val request = fitToBudget(request, provider.inputBudgetFor(request))
         val inputHash = Checksums.sha256(request.system + "\u0000" + request.user)
         val cacheKey = "${request.task}:${request.promptVersion}:${provider.id}:$inputHash"
         cache?.get(cacheKey)?.let { cached ->

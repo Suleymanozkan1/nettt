@@ -1,31 +1,45 @@
 package com.bookmind.core.ai
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** One request to the on-device model; the engine applies the model's own chat template. */
+data class OnDevicePrompt(val system: String, val user: String, val maxOutputTokens: Int, val temperature: Double)
+
 /**
- * A free model running on the phone itself (an open-weights model file the user imported). The actual
- * inference engine is supplied by the app as [generate] (MediaPipe LLM Inference on Android), which keeps this
- * class testable on the JVM. Prompts are formatted with the chat template the model was trained on.
+ * A free open-weights model running on the phone itself (LiteRT-LM). The engine is supplied by the app as
+ * [generate], which keeps this class testable on the JVM and lets the desktop build of the same engine run the
+ * real model in tests. Nothing leaves the device.
  */
 class OnDeviceProvider(
     private val modelName: String,
-    private val template: ChatTemplate,
-    /** Small phones run 2–4k token contexts; prompts are cut to this many characters. */
-    override val inputBudgetChars: Int = 6_000,
-    private val generate: suspend (prompt: String) -> String,
+    /** Context window the engine was created with (prompt + answer, in tokens). */
+    private val contextTokens: Int,
+    private val generate: suspend (OnDevicePrompt) -> String,
 ) : AiProvider {
-    override val id: String = "on-device"
+    // The model is part of the id so cached results of one model are not served for another.
+    override val id: String = "on-device:$modelName"
 
-    // One inference at a time: running two would double the memory needed on the phone.
+    /** Typical budget (answers up to ~1k tokens); used to size book chunks. */
+    override val inputBudgetChars: Int = budgetChars(contextTokens)
+
+    override fun inputBudgetFor(request: AiRequest): Int = budgetChars(contextTokens, answerTokens(request))
+
+    /** Never let the answer take more than half the context, so the book excerpt keeps room. */
+    private fun answerTokens(request: AiRequest) = request.maxOutputTokens.coerceAtMost(contextTokens / 2)
+
+    // One inference at a time: two would double the memory needed on the phone.
     private val lock = Mutex()
 
     override suspend fun complete(request: AiRequest): AiResponse {
-        val prompt = template.format(request.system + "\nReply with a single JSON object only.", request.user)
+        val prompt = OnDevicePrompt(request.system + "\nReply with a single JSON object only.", request.user, answerTokens(request), request.temperature)
         val raw = lock.withLock {
             try {
                 generate(prompt)
             } catch (e: AiException) {
+                throw e
+            } catch (e: CancellationException) {
                 throw e
             } catch (e: OutOfMemoryError) {
                 throw AiException.Server(507, "not enough memory for the on-device model")
@@ -33,47 +47,21 @@ class OnDeviceProvider(
                 throw AiException.Server(500, e.message?.take(200))
             }
         }
-        val text = template.strip(raw).trim()
+        val text = clean(raw)
         if (text.isEmpty()) throw AiException.InvalidOutput("empty on-device reply")
-        return AiResponse(text, modelName, inputTokens = prompt.length / 4, outputTokens = text.length / 4, costMicros = 0)
+        return AiResponse(text, modelName, inputTokens = (prompt.system.length + prompt.user.length) / 4, outputTokens = text.length / 4, costMicros = 0)
     }
-}
-
-/** Prompt formats of common open-weights instruction models. */
-enum class ChatTemplate(private val stopMarkers: List<String>) {
-    /** Gemma 2/3 (Google). Gemma has no system role; the system text goes first in the user turn. */
-    GEMMA(listOf("<end_of_turn>")),
-
-    /** ChatML: Qwen 2/2.5/3, SmolLM, many fine-tunes. */
-    CHATML(listOf("<|im_end|>")),
-
-    /** Llama 3.x. */
-    LLAMA3(listOf("<|eot_id|>")),
-
-    /** Phi-3/3.5/4-mini. */
-    PHI(listOf("<|end|>"));
-
-    fun format(system: String, user: String): String = when (this) {
-        GEMMA -> "<start_of_turn>user\n$system\n\n$user<end_of_turn>\n<start_of_turn>model\n"
-        CHATML -> "<|im_start|>system\n$system<|im_end|>\n<|im_start|>user\n$user<|im_end|>\n<|im_start|>assistant\n"
-        LLAMA3 -> "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n$system<|eot_id|>" +
-            "<|start_header_id|>user<|end_header_id|>\n\n$user<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-        PHI -> "<|system|>\n$system<|end|>\n<|user|>\n$user<|end|>\n<|assistant|>\n"
-    }
-
-    /** Removes anything after the end-of-turn marker if the engine returned it. */
-    fun strip(output: String): String = stopMarkers.fold(output) { acc, m -> acc.substringBefore(m) }
 
     companion object {
-        /** Guesses the template from a model file name ("gemma3-1b-it-int4.task" → GEMMA). */
-        fun forModelName(name: String): ChatTemplate {
-            val n = name.lowercase()
-            return when {
-                "gemma" in n -> GEMMA
-                "llama" in n -> LLAMA3
-                "phi" in n -> PHI
-                else -> CHATML
-            }
-        }
+        /** Removes reasoning blocks some small models emit before the answer ("<think>…</think>"). */
+        fun clean(raw: String): String = raw.replace(Regex("(?s)<think>.*?</think>"), "").substringAfter("</think>").trim()
+
+        /**
+         * Prompt characters for a context of [contextTokens], keeping room for an answer of [answerTokens] and the
+         * chat template. Turkish needs more tokens per character than English, so the estimate is conservative
+         * (≈2.6 characters per token).
+         */
+        fun budgetChars(contextTokens: Int, answerTokens: Int = 1_000): Int =
+            ((contextTokens - answerTokens - 200).coerceAtLeast(600) * 2.6).toInt()
     }
 }

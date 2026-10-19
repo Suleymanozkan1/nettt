@@ -20,6 +20,7 @@ object Notifier {
     const val CHANNEL_PROCESSING = "processing"
     const val ID_REMINDER = 1001
     const val ID_PROCESSING = 1002
+    const val ID_MODEL_DOWNLOAD = 1003
     const val EXTRA_DESTINATION = "destination"
 
     fun ensureChannels(appContext: Context) {

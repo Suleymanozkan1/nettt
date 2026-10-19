@@ -24,13 +24,15 @@ eğrisine göre tekrar ettiren Android uygulaması. Amaç kitapları hızlı tü
 - **Kişiselleştirme:** öğrenme planı (eksik günleri suçluluk yaratmadan kaydırır), aktif hatırlama düzeyleri,
   hikâye/örnek üretici, kişisel notlar ve vurgular, kitaplar arası bilgi grafiği, oyunlaştırma (kaliteye dayalı XP,
   esnek seri), analitik, bildirimler (yerel saat dilimi, gün seçimi, tatil modu, gizli içerik).
-- **Ücretsiz ve yerel yapay zekâ:** varsayılan mod yapay zekâsızdır (TextRank, BM25, kurallar). İsteğe bağlı olarak
-  **telefondaki açık model** (MediaPipe, içe aktarılan `.task` dosyası) veya **bilgisayardaki model** (Ollama,
-  llama.cpp, LM Studio; yalnızca yerel ağ) kullanılabilir. API anahtarı, abonelik ve kullanım ücreti yoktur; ücretli
-  bulut yapay zekâ varsayılan derlemeden çıkarılmıştır. Ayrıntılar: [docs/FREE_AI.md](docs/FREE_AI.md).
-- **Kitaba sor ve sesli dinle:** kitapla soru-cevap (BM25 + yerel model ya da kitaptan alıntı) ve telefonun
+- **Telefonda çalışan ücretsiz yapay zekâ:** Profil → Yapay zekâ asistanı (veya ana ekrandaki kart) üzerinden tek
+  dokunuşla açık bir model indirilir (önerilen: **Gemma 4 E2B**, 2,6 GB, Apache-2.0; 12 GB RAM'li telefonlarda Gemma 4
+  E4B, 4 GB'lık telefonlarda Qwen3 0.6B). Model Google'ın LiteRT-LM motoruyla tamamen telefonda, internetsiz çalışır;
+  başka bir uygulama, hesap, API anahtarı ya da ücret gerekmez ve kitap metni telefondan çıkmaz. Model inene kadar
+  (veya yapay zekâ kapalıyken) klasik yöntemler kullanılır (TextRank, BM25, kurallar). Ücretli bulut yapay zekâ
+  varsayılan derlemeden çıkarılmıştır. Ayrıntılar: [docs/FREE_AI.md](docs/FREE_AI.md).
+- **Kitaba sor ve sesli dinle:** kitapla soru-cevap (BM25 + telefondaki model ya da kitaptan alıntı) ve telefonun
   yerleşik sesli okuması.
-- **Gizlilik:** kitap metni telefonundan veya ev ağından çıkmaz. Hesap isteğe bağlıdır.
+- **Gizlilik:** kitap metni telefonundan çıkmaz; yapay zekâ için tek ağ bağlantısı modelin bir kez indirilmesidir. Hesap isteğe bağlıdır.
 
 Ayrıntılar: [docs/FINAL_IMPLEMENTATION_REPORT.md](docs/FINAL_IMPLEMENTATION_REPORT.md).
 
@@ -73,9 +75,8 @@ Supabase alanları boşsa uygulama **yalnızca yerel modda** çalışır: içe a
 | Edge Function secret | `ANTHROPIC_API_KEY` | Yalnızca bulut açık derlemelerde ve sunucuda. Uygulamaya **asla** konmaz |
 | Edge Function secret | `AI_MODEL` (varsayılan `claude-opus-5-5`), `AI_DAILY_REQUEST_LIMIT` (150) | İsteğe bağlı |
 
-Uygulama içi ayarlar (Profil sekmesi): yapay zekâ modu (yapay zekâsız / telefondaki model / bilgisayarımdaki model;
-debug derlemede mock), model dosyası, sunucu adresi ve bağlam uzunluğu,
-tekrar algoritması (FSRS/SM-2), hedef hatırlama oranı, günlük yeni kart sayısı, tema, dil (TR/EN), spoiler koruması.
+Uygulama içi ayarlar (Profil sekmesi): yapay zekâ asistanı (model indirme, model seçimi, aç/kapat; debug derlemede
+mock), tekrar algoritması (FSRS/SM-2), hedef hatırlama oranı, günlük yeni kart sayısı, tema, dil (TR/EN), spoiler koruması.
 
 ### Supabase (isteğe bağlı bulut)
 

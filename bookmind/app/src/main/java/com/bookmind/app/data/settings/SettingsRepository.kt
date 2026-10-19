@@ -19,13 +19,13 @@ import javax.inject.Singleton
 
 /**
  * Where generated content comes from. All modes except REMOTE are free:
- * - LOCAL: no AI; classic on-device algorithms (TextRank, BM25, rules). Default.
- * - ON_DEVICE: an open-weights model file running on the phone (MediaPipe LLM Inference).
- * - COMPUTER: a model on the user's own computer on the local network (Ollama, llama.cpp, LM Studio).
+ * - ON_DEVICE: an open-weights model downloaded in the app and running on the phone (LiteRT-LM). Default; until
+ *   the model is downloaded the classic algorithms are used.
+ * - LOCAL: AI turned off; classic on-device algorithms only (TextRank, BM25, rules).
  * - REMOTE: the optional paid cloud backend; only exists in builds made with bookmind.enableCloudAi=true.
  * - MOCK: deterministic test provider (debug builds).
  */
-enum class AiMode { LOCAL, ON_DEVICE, COMPUTER, REMOTE, MOCK }
+enum class AiMode { ON_DEVICE, LOCAL, REMOTE, MOCK }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
@@ -36,7 +36,7 @@ data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     /** "tr" (default) or "en"; see [AppLanguage]. */
     val language: String = AppLanguage.DEFAULT,
-    val aiMode: AiMode = AiMode.LOCAL,
+    val aiMode: AiMode = AiMode.ON_DEVICE,
     val algorithm: SrsAlgorithm = SrsAlgorithm.FSRS,
     val desiredRetention: Float = 0.9f,
     val newItemsPerDay: Int = 15,
@@ -47,14 +47,10 @@ data class AppSettings(
     val lastSyncAt: Long = 0,
     /** Per-table pull cursors (server timestamps, ISO-8601) as a JSON object. */
     val syncCursors: String = "{}",
-    /** Base URL of the user's own model server, e.g. http://192.168.1.20:11434 (Ollama). */
-    val computerUrl: String = "",
-    val computerModel: String = "",
-    /** Context window of the computer model in tokens; prompts are sized to fit. */
-    val computerContextTokens: Int = 8_192,
-    /** File name of the imported on-device model inside filesDir/models. */
+    /** Id of the chosen on-device model in [com.bookmind.app.ai.ModelCatalog]; empty = the one recommended for this phone. */
     val onDeviceModel: String = "",
-    val onDeviceContextTokens: Int = 2_048,
+    /** The "turn on AI" card on the home screen was dismissed. */
+    val aiPromptDismissed: Boolean = false,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("settings")
@@ -68,6 +64,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         val theme = stringPreferencesKey("theme")
         val language = stringPreferencesKey("language")
         val aiMode = stringPreferencesKey("ai_mode")
+        val aiModeVersion = intPreferencesKey("ai_mode_version")
         val algorithm = stringPreferencesKey("algorithm")
         val retention = floatPreferencesKey("desired_retention")
         val newPerDay = intPreferencesKey("new_per_day")
@@ -77,11 +74,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         val summaryLength = stringPreferencesKey("summary_length")
         val lastSync = longPreferencesKey("last_sync_at")
         val cursors = stringPreferencesKey("sync_cursors")
-        val computerUrl = stringPreferencesKey("computer_url")
-        val computerModel = stringPreferencesKey("computer_model")
-        val computerContext = intPreferencesKey("computer_context")
         val onDeviceModel = stringPreferencesKey("on_device_model")
-        val onDeviceContext = intPreferencesKey("on_device_context")
+        val aiPromptDismissed = booleanPreferencesKey("ai_prompt_dismissed")
     }
 
     val settings: Flow<AppSettings> = store.data.map(::read)
@@ -90,7 +84,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         onboardingDone = p[Keys.onboarding] ?: false,
         theme = p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
         language = AppLanguage.normalize(p[Keys.language]),
-        aiMode = p[Keys.aiMode]?.let { runCatching { AiMode.valueOf(it) }.getOrNull() } ?: AiMode.LOCAL,
+        // Earlier versions stored LOCAL as the default and had a "computer" mode; both now mean the on-device model.
+        aiMode = p[Keys.aiMode]?.let { runCatching { AiMode.valueOf(it) }.getOrNull() }?.takeIf { p[Keys.aiModeVersion] == 2 } ?: AiMode.ON_DEVICE,
         algorithm = p[Keys.algorithm]?.let { runCatching { SrsAlgorithm.valueOf(it) }.getOrNull() } ?: SrsAlgorithm.FSRS,
         desiredRetention = (p[Keys.retention] ?: 0.9f).coerceIn(0.7f, 0.97f),
         newItemsPerDay = (p[Keys.newPerDay] ?: 15).coerceIn(0, 200),
@@ -100,11 +95,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         summaryLength = p[Keys.summaryLength] ?: "MEDIUM",
         lastSyncAt = p[Keys.lastSync] ?: 0,
         syncCursors = p[Keys.cursors] ?: "{}",
-        computerUrl = p[Keys.computerUrl] ?: "",
-        computerModel = p[Keys.computerModel] ?: "",
-        computerContextTokens = (p[Keys.computerContext] ?: 8_192).coerceIn(1_024, 131_072),
         onDeviceModel = p[Keys.onDeviceModel] ?: "",
-        onDeviceContextTokens = (p[Keys.onDeviceContext] ?: 2_048).coerceIn(512, 32_768),
+        aiPromptDismissed = p[Keys.aiPromptDismissed] ?: false,
     )
 
     suspend fun current(): AppSettings = settings.first()
@@ -117,6 +109,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
             p[Keys.language] = AppLanguage.normalize(s.language)
             AppLanguage.tag = AppLanguage.normalize(s.language)
             p[Keys.aiMode] = s.aiMode.name
+            p[Keys.aiModeVersion] = 2
             p[Keys.algorithm] = s.algorithm.name
             p[Keys.retention] = s.desiredRetention.coerceIn(0.7f, 0.97f)
             p[Keys.newPerDay] = s.newItemsPerDay.coerceIn(0, 200)
@@ -126,11 +119,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
             p[Keys.summaryLength] = s.summaryLength
             p[Keys.lastSync] = s.lastSyncAt
             p[Keys.cursors] = s.syncCursors
-            p[Keys.computerUrl] = s.computerUrl.trim()
-            p[Keys.computerModel] = s.computerModel.trim()
-            p[Keys.computerContext] = s.computerContextTokens
             p[Keys.onDeviceModel] = s.onDeviceModel
-            p[Keys.onDeviceContext] = s.onDeviceContextTokens
+            p[Keys.aiPromptDismissed] = s.aiPromptDismissed
         }
     }
 

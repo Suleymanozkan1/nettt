@@ -24,6 +24,7 @@ object Routes {
     const val ASK = "ask/{bookId}"
     const val NOTIFICATIONS = "notifications"
     const val SETTINGS = "settings"
+    const val AI = "ai"
 
     fun book(id: String) = "book/$id"
     fun chapter(id: String) = "chapter/${Uri.encode(id)}"

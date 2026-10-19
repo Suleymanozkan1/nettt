@@ -1,6 +1,15 @@
 package com.bookmind.core.ai
 
 import com.bookmind.core.TestFixtures
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Content
+import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.LogSeverity
+import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.ThinkingConfig
 import com.bookmind.core.search.Bm25Index
 import com.bookmind.core.text.MarkdownParser
 import com.bookmind.core.text.Sentences
@@ -11,14 +20,40 @@ import java.io.File
 import kotlin.test.assertTrue
 
 /**
- * Runs the real pipeline against a free model on a local llama.cpp / Ollama server and compares summary
- * quality of the old frequency extractor, the new TextRank extractor and the local LLM on the same books.
- * Opt-in: BOOKMIND_LOCAL_LLM_URL=http://127.0.0.1:8089 BOOKMIND_LOCAL_LLM_MODEL=qwen2.5-1.5b ./gradlew :core:test
- * Writes core/build/reports/local-model-evaluation.md.
+ * Runs the real pipeline on a phone model file (.litertlm) with the desktop build of the same LiteRT-LM engine
+ * the app uses, and compares summary quality of the old frequency extractor, the TextRank extractor and the
+ * model on the same books.
+ * Opt-in: BOOKMIND_LITERTLM_MODEL=/path/gemma-4-E2B-it.litertlm [BOOKMIND_LITERTLM_CONTEXT=4096] ./gradlew :core:test
+ * Writes core/build/reports/local-model-evaluation-<model>.md.
  */
 class LocalModelEvaluationTest {
-    private val url = System.getenv("BOOKMIND_LOCAL_LLM_URL")
-    private val model = System.getenv("BOOKMIND_LOCAL_LLM_MODEL") ?: "local"
+    private val path = System.getenv("BOOKMIND_LITERTLM_MODEL")
+    private val context = System.getenv("BOOKMIND_LITERTLM_CONTEXT")?.toIntOrNull() ?: 4_096
+    private val model = path?.let { File(it).nameWithoutExtension } ?: "model"
+
+    /** Same engine settings as the app's OnDeviceModels: CPU, one fresh conversation per request, no thinking. */
+    private class Runner(path: String, context: Int) : AutoCloseable {
+        private val engine = Engine(EngineConfig(modelPath = path, backend = Backend.CPU(), maxNumTokens = context)).also {
+            Engine.setNativeMinLogSeverity(LogSeverity.ERROR)
+            it.initialize()
+        }
+
+        fun generate(p: OnDevicePrompt): String {
+            val config = ConversationConfig(
+                systemInstruction = Contents.of(p.system),
+                samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = p.temperature),
+                maxOutputToken = p.maxOutputTokens,
+                // Answers are short and structured; a reasoning preamble would only cost time and battery.
+                thinkingConfig = ThinkingConfig(enableThinking = false),
+            )
+            return engine.createConversation(config).use { c ->
+                c.sendMessage(p.user)
+                    .contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
+            }
+        }
+
+        override fun close() = engine.close()
+    }
 
     private data class Case(val lang: String, val markdown: String, val keyConcepts: List<String>)
 
@@ -42,15 +77,29 @@ class LocalModelEvaluationTest {
     }
 
     @Test fun `free local model runs every task and is compared with the extractive engines`() = runBlocking {
-        assumeTrue("set BOOKMIND_LOCAL_LLM_URL to run against a real local model", url != null)
-        val report = StringBuilder("# Yerel model değerlendirmesi\n\nModel: `$model` (sunucu: $url)\n\n")
+        assumeTrue("set BOOKMIND_LITERTLM_MODEL to run a real on-device model", path != null)
+        val load = System.currentTimeMillis()
+        val runner = Runner(path!!, context)
+        val report = StringBuilder("# Telefondaki model değerlendirmesi\n\nModel: `$model`, bağlam $context token, LiteRT-LM (CPU), yükleme ${System.currentTimeMillis() - load} ms\n\n")
         val engine = LocalHeuristicEngine()
-        for (case in cases) {
+        File("build/reports").mkdirs()
+        val out = File("build/reports/local-model-evaluation-$model.md")
+        val progress = File("build/reports/local-model-evaluation-$model.log").apply { writeText("") }
+        val raw = File("build/reports/local-model-evaluation-$model-raw.txt").apply { writeText("") }
+        var calls = 0
+        val provider = OnDeviceProvider(model, context) { p ->
+            val t0 = System.currentTimeMillis()
+            runner.generate(p).also {
+                progress.appendText("call ${++calls}: ${p.system.length + p.user.length} chars in, ${it.length} out, ${System.currentTimeMillis() - t0} ms\n")
+                raw.appendText("===== call $calls (max ${p.maxOutputTokens} tokens)\n${p.user.take(300)}\n----- output\n$it\n")
+            }
+        }
+        val langs = (System.getenv("BOOKMIND_EVAL_LANGS") ?: "tr,en").split(',')
+        for (case in cases.filter { it.lang in langs }) {
             val book = MarkdownParser.parse(case.markdown, case.lang)
             val chapters = book.chapters.mapIndexed { i, c -> LocalHeuristicEngine.ChapterInput(i, c.title, c.text) }
             val sources = chapters.map { it.text }
-            val provider = LocalServerProvider(url!!, model, inputBudgetChars = 12_000)
-            // One corrective retry for invalid JSON, no extra network retries: the server is local.
+            // One corrective retry for invalid JSON; there is no network to retry.
             val ai = LearningAi({ provider }, baseBackoffMs = 500, maxAttempts = 2)
             val info = LearningAi.Book(book.title ?: "Book", null, case.lang, BookGenre.INFORMATIONAL)
             val rows = mutableListOf<Row>()
@@ -75,7 +124,7 @@ class LocalModelEvaluationTest {
             val doc = summary.value
             val llmText = (doc.sections.flatMap { listOf(it.body) + it.bullets } + doc.ideas.map { it.explanation }).joinToString(" ")
             val refs = doc.sections.flatMap { it.sources }
-            rows += metrics("Yerel LLM ($model, map-reduce)", llmText, sources, case.keyConcepts,
+            rows += metrics("Telefon modeli ($model, map-reduce)", llmText, sources, case.keyConcepts,
                 refs.count { it.verified && it.quote != null } to refs.count { it.quote != null || !it.verified }, llmMs)
 
             assertTrue(analyses.all { it is AiResult.Ok })
@@ -94,15 +143,16 @@ class LocalModelEvaluationTest {
             report.append("## ${book.title} (${case.lang})\n\n")
             report.append("| Yöntem | Kelime | Kavram kapsamı (/${case.keyConcepts.size}) | Tekrar (Jaccard ort.) | Kitapta olmayan sayı/isim | Doğrulanan alıntı | Süre |\n|---|---|---|---|---|---|---|\n")
             rows.forEach { r -> report.append("| ${r.method} | ${r.words} | ${r.coverage} | ${"%.3f".format(r.redundancy)} | ${r.unsupported} | ${r.quotesOk} | ${r.ms} ms |\n") }
-            report.append("\n- Bölüm analizi: ${aiShare}/${chapters.size} bölüm yerel modelle, kalan yerel motorla (geçersiz çıktı → otomatik yerel yedek).\n")
+            report.append("\n- Bölüm analizi: ${aiShare}/${chapters.size} bölüm modelle, kalan yapay zekâsız yöntemle (geçersiz çıktı → otomatik yerel yedek).\n")
             report.append("- Özet uyarıları: ${summary.warnings.ifEmpty { listOf("yok") }.joinToString("; ")}\n")
             report.append("- Quiz: ${(quiz as? AiResult.Ok)?.let { "${it.value.size} geçerli soru, yapay zekâ: ${it.info.aiGenerated}" } ?: "başarısız"} ($quizMs ms)\n")
             report.append("- Soru-cevap (\"$question\"): ${(answer as? AiResult.Ok)?.let { "yapay zekâ: ${it.info.aiGenerated}, kaynak: ${it.value.citations}, kitapta: ${it.value.inBook}" } ?: "başarısız"} ($answerMs ms)\n")
             (answer as? AiResult.Ok)?.let { report.append("\n> ${it.value.answer.replace("\n", " ")}\n") }
-            report.append("\nYerel LLM özetinden:\n\n> ${llmText.take(600).replace("\n", " ")}…\n\n")
+            report.append("\nModel özetinden:\n\n> ${llmText.take(600).replace("\n", " ")}…\n\n")
+            out.writeText(report.toString())
         }
-        File("build/reports").mkdirs()
-        File("build/reports/local-model-evaluation.md").writeText(report.toString())
+        runner.close()
+        out.writeText(report.toString())
         println(report)
     }
 }
