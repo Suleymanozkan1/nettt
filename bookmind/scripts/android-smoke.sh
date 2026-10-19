@@ -40,6 +40,17 @@ wait_text() { # wait_text "label" [seconds] [quiet]
   return 1
 }
 tap_text() { wait_text "$1" "${2:-60}"; local xy; xy=$(find_text "$1"); adb shell input tap $xy; sleep 1; }
+# Like tap_text, but swipes the content up until the label is on screen (small emulator screens).
+scroll_tap_text() {
+  local i
+  for i in 1 2 3 4 5 6; do
+    if [ -n "$(find_text "$1")" ]; then tap_text "$1" 5; return 0; fi
+    local size w h
+    size=$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1); w=${size%x*}; h=${size#*x}
+    adb shell input swipe $((w / 2)) $((h * 7 / 10)) $((w / 2)) $((h * 3 / 10)) 300; sleep 1
+  done
+  tap_text "$1" 10
+}
 no_crash() { ! adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime: Process: $PKG" ; }
 
 for i in $(seq 1 60); do [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break; sleep 2; done
@@ -76,8 +87,8 @@ adb exec-out screencap -p > "$OUT/02-library.png"
 
 echo "== book detail and on-device quick summary, all in English"
 tap_text "The Science of Learning"
-wait_text "Quick summary" 60
-tap_text "Quick summary"
+wait_text "Review" 60
+scroll_tap_text "Quick summary"
 tap_text "Generate"
 wait_text "Key idea" 90
 dump
