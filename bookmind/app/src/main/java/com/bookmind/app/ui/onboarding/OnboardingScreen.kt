@@ -204,19 +204,20 @@ private fun StepDots(current: Int, count: Int) {
 
 @Composable
 private fun LanguagePage(selected: String, onSelect: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        HeroCard(Modifier.size(112.dp)) {
-            Icon(Icons.Filled.Translate, null, Modifier.size(52.dp).align(Alignment.Center))
+    // Kept compact so both options are visible without scrolling on small (320×640 dp) phones.
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        HeroCard(Modifier.size(80.dp)) {
+            Icon(Icons.Filled.Translate, null, Modifier.size(38.dp).align(Alignment.Center))
         }
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(18.dp))
         // Shown in both languages: the user has not picked one yet.
-        Text("Hoş geldin · Welcome", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(10.dp))
-        Text(stringResource(R.string.onb_language_body), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(28.dp))
+        Text("Hoş geldin · Welcome", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
+        Text(stringResource(R.string.onb_language_body), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(20.dp))
         listOf("tr" to "Türkçe", "en" to "English").forEach { (tag, name) ->
             LanguageOption(name, tag.uppercase(), selected == tag) { if (selected != tag) onSelect(tag) }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
         }
     }
 }
@@ -229,7 +230,7 @@ private fun LanguageOption(name: String, code: String, selected: Boolean, onClic
             .background(if (selected) cs.primaryContainer else MaterialTheme.extended.card)
             .border(if (selected) 2.dp else 1.dp, if (selected) cs.primary else MaterialTheme.extended.cardBorder, MaterialTheme.shapes.large)
             .selectable(selected, role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(if (selected) cs.primary else cs.surfaceContainerHigh), contentAlignment = Alignment.Center) {

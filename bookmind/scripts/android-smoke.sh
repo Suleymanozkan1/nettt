@@ -52,7 +52,8 @@ echo "== cold start"; adb shell am start -W -n "$PKG/.MainActivity" | tee "$OUT/
 echo "== onboarding: language first (the app starts in Turkish), then switch to English"
 wait_text "Türkçe" 90
 adb exec-out screencap -p > "$OUT/00-language.png"
-tap_text "English"
+# Both options must fit on the screen; scrolling here would mean the layout regressed on small phones.
+tap_text "English" 20
 # Choosing a language recreates the activity in that language.
 wait_text "Next" 30
 tap_text "Next"; tap_text "Next"; tap_text "Next"; tap_text "Next"

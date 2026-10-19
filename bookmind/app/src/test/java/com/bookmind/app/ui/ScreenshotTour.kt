@@ -12,6 +12,8 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -126,5 +128,18 @@ class ScreenshotTour {
 
     @Test @Config(qualifiers = "+tr") fun tour_tr() = tour("tr_")
     @Test @Config(qualifiers = "+tr-night") fun tour_dark() = tour("dark_")
+
+    /** CI's emulator profile: everything on the first screens must be reachable without scrolling. */
+    @Test @Config(qualifiers = "tr-w320dp-h640dp-mdpi") fun small_screen() {
+        assumeTrue(out != null); out!!.mkdirs()
+        hilt.inject()
+        runBlocking { settings.clear() }
+        ActivityScenario.launch(MainActivity::class.java).also { scenario = it }.use {
+            waitFor("Türkçe"); compose.onNodeWithText("English").assertIsDisplayed(); shot("small_00_language")
+            click(s(R.string.next)); pause(300); shot("small_01_onboarding")
+            repeat(3) { click(s(R.string.next)); pause(200) }
+            shot("small_02_setup")
+        }
+    }
     @Test @Config(qualifiers = "+en") fun tour_en() = tour("en_")
 }
