@@ -24,8 +24,13 @@ eğrisine göre tekrar ettiren Android uygulaması. Amaç kitapları hızlı tü
 - **Kişiselleştirme:** öğrenme planı (eksik günleri suçluluk yaratmadan kaydırır), aktif hatırlama düzeyleri,
   hikâye/örnek üretici, kişisel notlar ve vurgular, kitaplar arası bilgi grafiği, oyunlaştırma (kaliteye dayalı XP,
   esnek seri), analitik, bildirimler (yerel saat dilimi, gün seçimi, tatil modu, gizli içerik).
-- **Gizlilik:** varsayılan **cihaz üzerinde** çalışır; yapay zekâ isteğe bağlıdır ve yalnızca güvenli sunucu
-  (Supabase Edge Function) üzerinden çağrılır, API anahtarı uygulamada yoktur. Hesap isteğe bağlıdır.
+- **Ücretsiz ve yerel yapay zekâ:** varsayılan mod yapay zekâsızdır (TextRank, BM25, kurallar). İsteğe bağlı olarak
+  **telefondaki açık model** (MediaPipe, içe aktarılan `.task` dosyası) veya **bilgisayardaki model** (Ollama,
+  llama.cpp, LM Studio; yalnızca yerel ağ) kullanılabilir. API anahtarı, abonelik ve kullanım ücreti yoktur; ücretli
+  bulut yapay zekâ varsayılan derlemeden çıkarılmıştır. Ayrıntılar: [docs/FREE_AI.md](docs/FREE_AI.md).
+- **Kitaba sor ve sesli dinle:** kitapla soru-cevap (BM25 + yerel model ya da kitaptan alıntı) ve telefonun
+  yerleşik sesli okuması.
+- **Gizlilik:** kitap metni telefonundan veya ev ağından çıkmaz. Hesap isteğe bağlıdır.
 
 Ayrıntılar: [docs/FINAL_IMPLEMENTATION_REPORT.md](docs/FINAL_IMPLEMENTATION_REPORT.md).
 
@@ -64,10 +69,12 @@ Supabase alanları boşsa uygulama **yalnızca yerel modda** çalışır: içe a
 |---|---|---|
 | `local.properties` veya ortam değişkeni | `bookmind.supabaseUrl` / `BOOKMIND_SUPABASEURL` | `https://<proje>.supabase.co` (debug derlemede yerel `http://10.0.2.2:54321` de kabul edilir) |
 | `local.properties` veya ortam değişkeni | `bookmind.supabaseAnonKey` / `BOOKMIND_SUPABASEANONKEY` | Supabase anon (public) anahtarı |
-| Edge Function secret | `ANTHROPIC_API_KEY` | Yalnızca sunucuda. Uygulamaya **asla** konmaz |
+| `local.properties` | `bookmind.enableCloudAi=true` | **Ücretli** bulut yapay zekâyı derlemeye ekler. Varsayılan: kapalı |
+| Edge Function secret | `ANTHROPIC_API_KEY` | Yalnızca bulut açık derlemelerde ve sunucuda. Uygulamaya **asla** konmaz |
 | Edge Function secret | `AI_MODEL` (varsayılan `claude-opus-5-5`), `AI_DAILY_REQUEST_LIMIT` (150) | İsteğe bağlı |
 
-Uygulama içi ayarlar (Profil sekmesi): yapay zekâ modu (cihaz üzerinde / bulut / mock), günlük AI istek sınırı,
+Uygulama içi ayarlar (Profil sekmesi): yapay zekâ modu (yapay zekâsız / telefondaki model / bilgisayarımdaki model;
+debug derlemede mock), model dosyası, sunucu adresi ve bağlam uzunluğu,
 tekrar algoritması (FSRS/SM-2), hedef hatırlama oranı, günlük yeni kart sayısı, tema, dil (TR/EN), spoiler koruması.
 
 ### Supabase (isteğe bağlı bulut)
@@ -117,6 +124,7 @@ Release derlemesi şu an **debug anahtarıyla** imzalanır (yerel denemeler içi
 - [Mimari](docs/ARCHITECTURE.md)
 - [Veri modeli](docs/DATA_MODEL.md)
 - [AI hattı](docs/AI_PIPELINE.md)
+- [Ücretsiz yapay zekâ: envanter, geçiş, değerlendirme](docs/FREE_AI.md)
 - [Öğrenme ve aralıklı tekrar](docs/LEARNING_AND_SPACED_REPETITION.md)
 - [Gizlilik ve telif](docs/PRIVACY_AND_COPYRIGHT.md)
 - [Test raporu](docs/TEST_REPORT.md)

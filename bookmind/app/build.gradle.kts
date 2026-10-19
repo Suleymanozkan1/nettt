@@ -31,6 +31,9 @@ android {
 
         buildConfigField("String", "SUPABASE_URL", "\"${config("bookmind.supabaseUrl")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${config("bookmind.supabaseAnonKey")}\"")
+        // The paid cloud AI (Supabase Edge Function → hosted LLM) is compiled out unless explicitly enabled.
+        // Default builds only use free, local AI: no API key, no per-request cost, book text stays on the user's devices.
+        buildConfigField("boolean", "CLOUD_AI_ENABLED", config("bookmind.enableCloudAi").equals("true", ignoreCase = true).toString())
     }
 
     buildTypes {
@@ -123,6 +126,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.pdfbox.android)
     implementation(libs.mlkit.text.recognition)
+    // On-device LLM runtime (Apache-2.0). The model file is imported by the user; nothing is downloaded by the app.
+    implementation(libs.mediapipe.genai)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)

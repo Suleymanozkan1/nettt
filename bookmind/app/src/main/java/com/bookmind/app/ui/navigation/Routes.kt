@@ -21,6 +21,7 @@ object Routes {
     const val NOTE_EDIT = "note_edit?bookId={bookId}&noteId={noteId}&chapterId={chapterId}&highlight={highlight}"
     const val CONNECTIONS = "connections"
     const val PLAN = "plan/{bookId}"
+    const val ASK = "ask/{bookId}"
     const val NOTIFICATIONS = "notifications"
     const val SETTINGS = "settings"
 
@@ -38,4 +39,5 @@ object Routes {
         "note_edit?bookId=$bookId" + (noteId?.let { "&noteId=$it" } ?: "") + (chapterId?.let { "&chapterId=${Uri.encode(it)}" } ?: "") +
             (highlight?.let { "&highlight=${Uri.encode(it.take(1_500))}" } ?: "")
     fun plan(bookId: String) = "plan/$bookId"
+    fun ask(bookId: String) = "ask/$bookId"
 }

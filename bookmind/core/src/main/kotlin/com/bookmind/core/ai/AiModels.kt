@@ -14,6 +14,7 @@ object PromptVersions {
     const val GRADE = "grade/2"
     const val STORY = "story/2"
     const val LINKS = "concept-links/2"
+    const val ANSWER = "answer/1"
     const val SCHEMA_VERSION = 1
 }
 
@@ -253,3 +254,14 @@ data class ConceptLinkDraft(
 
 @Serializable
 data class ConceptLinksDraft(val links: List<ConceptLinkDraft> = emptyList())
+
+/** Answer to a reader's question about a book, grounded in numbered passages from the book. */
+@Serializable
+data class BookAnswer(
+    val answer: String,
+    /** Indexes into the passages that were shown; validated against the list. */
+    val citations: List<Int> = emptyList(),
+    /** False when the passages do not contain the answer; the UI then says so instead of guessing. */
+    val inBook: Boolean = true,
+    val confidence: Double = 0.5,
+)

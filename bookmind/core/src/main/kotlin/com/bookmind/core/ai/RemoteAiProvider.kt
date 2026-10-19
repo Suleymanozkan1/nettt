@@ -27,6 +27,7 @@ class RemoteAiProvider(
     client: OkHttpClient = OkHttpClient(),
 ) : AiProvider {
     override val id: String = "remote"
+    override val free: Boolean = false
 
     private val http = client.newBuilder()
         .connectTimeout(15, TimeUnit.SECONDS)

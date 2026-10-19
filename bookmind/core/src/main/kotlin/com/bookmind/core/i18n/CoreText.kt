@@ -124,6 +124,15 @@ sealed class CoreText {
 
     abstract fun chaptersFailed(n: Int): String
     abstract val quizWrongOnly: String
+    abstract val answerFromBook: String
+    abstract val localOnly: String
+    abstract val invalidAddress: String
+    abstract val modelUnsupported: String
+    abstract val modelTooLarge: String
+    abstract val modelUnreadable: String
+    abstract fun unsupportedClaims(items: String): String
+    abstract val answerNotFound: String
+    abstract val answerUncited: String
     abstract val quizNearForgetting: String
     abstract val quizMixed: String
     abstract val quizFullBook: String
@@ -249,12 +258,21 @@ sealed class CoreText {
 
         override fun chaptersFailed(n: Int) = "$n bölüm analiz edilemedi."
         override val quizWrongOnly = "yanlışlar"
+        override fun unsupportedClaims(items: String) = "Kitapta geçmeyen ifadeler: $items. Bunlar modelin çıkarımı ya da hatası olabilir."
+        override val localOnly = "Yalnızca yerel ağ adresleri kabul edilir (ör. 192.168.x.x). İnternetteki bir sunucu ücretli olabilir ve kitap metnini dışarı gönderir."
+        override val invalidAddress = "Adres okunamadı. Örnek: http://192.168.1.20:11434"
+        override val modelUnsupported = "Bu dosya türü desteklenmiyor. MediaPipe .task, .litertlm veya .bin model dosyası seç."
+        override val modelTooLarge = "Model dosyası çok büyük (en fazla 6 GB)."
+        override val modelUnreadable = "Model dosyası okunamadı."
+        override val answerFromBook = "Kitapta sorunla en çok örtüşen cümleler:"
+        override val answerNotFound = "Bu sorunun cevabını kitapta bulamadım. Farklı kelimelerle sormayı dene."
+        override val answerUncited = "Cevap kitaptaki bir bölüme dayandırılamadı; dikkatle değerlendir."
         override val quizNearForgetting = "unutulmaya yakın"
         override val quizMixed = "karışık tekrar"
         override val quizFullBook = "tüm kitap"
         override fun aiError(e: AiException) = when (e) {
-            is AiException.NotConfigured -> "Yapay zekâ sağlayıcısı ayarlanmadı."
-            is AiException.Network -> "Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene."
+            is AiException.NotConfigured -> "Seçilen yerel model hazır değil (model dosyası ya da bilgisayar adresi ayarlanmamış)."
+            is AiException.Network -> "Modele bağlanılamadı. Bilgisayarın açık ve aynı ağda olduğunu kontrol et."
             is AiException.Timeout -> "İstek zaman aşımına uğradı. Tekrar dene."
             is AiException.QuotaExceeded -> "Günlük yapay zekâ kullanım sınırına ulaşıldı."
             is AiException.Unauthorized -> "Oturumun sona erdi; yeniden giriş yap."
@@ -382,13 +400,22 @@ sealed class CoreText {
         override fun couldNotGrade(reason: String) = "Could not be graded: $reason"
 
         override val quizWrongOnly = "mistakes"
+        override fun unsupportedClaims(items: String) = "Not found in the book: $items. These may be the model's inference or a mistake."
+        override val localOnly = "Only local network addresses are accepted (e.g. 192.168.x.x). A server on the internet could cost money and would send the book text away."
+        override val invalidAddress = "Couldn't read the address. Example: http://192.168.1.20:11434"
+        override val modelUnsupported = "This file type is not supported. Choose a MediaPipe .task, .litertlm or .bin model file."
+        override val modelTooLarge = "The model file is too large (6 GB max)."
+        override val modelUnreadable = "The model file could not be read."
+        override val answerFromBook = "The sentences in the book that best match your question:"
+        override val answerNotFound = "I couldn't find the answer in the book. Try asking with different words."
+        override val answerUncited = "The answer could not be tied to a passage in the book; treat it with care."
         override val quizNearForgetting = "about to be forgotten"
         override val quizMixed = "mixed review"
         override val quizFullBook = "whole book"
         override fun chaptersFailed(n: Int) = if (n == 1) "1 chapter could not be analysed." else "$n chapters could not be analysed."
         override fun aiError(e: AiException) = when (e) {
-            is AiException.NotConfigured -> "The AI provider is not set up."
-            is AiException.Network -> "Couldn't connect. Check your internet connection and try again."
+            is AiException.NotConfigured -> "The selected local model is not set up (no model file or computer address)."
+            is AiException.Network -> "Couldn't reach the model. Check that the computer is on and on the same network."
             is AiException.Timeout -> "The request timed out. Try again."
             is AiException.QuotaExceeded -> "Daily AI usage limit reached."
             is AiException.Unauthorized -> "Your session expired; please sign in again."

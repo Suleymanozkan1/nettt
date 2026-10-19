@@ -1,3 +1,4 @@
+// OPTIONAL, PAID: only used by builds made with bookmind.enableCloudAi=true. Default builds never call it.
 // Provider proxy core for the `ai` Edge Function. Pure and dependency-injected so it can be unit tested
 // without network access (see ../tests/ai_core_test.ts).
 import Anthropic from "npm:@anthropic-ai/sdk@0.135.0";
@@ -11,6 +12,7 @@ export const TASKS = [
   "GRADE",
   "STORY",
   "CONCEPT_LINKS",
+  "ANSWER",
 ] as const;
 export type Task = (typeof TASKS)[number];
 

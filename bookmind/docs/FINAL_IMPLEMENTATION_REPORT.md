@@ -44,6 +44,8 @@ NOT_IMPLEMENTED, BLOCKED (dış bilgi/izin gerekir).
 | Kotlin, Compose, M3, MVVM (+ saf `core` alan katmanı), Coroutines/Flow, Room, DataStore, WorkManager, bildirimler, Navigation Compose, Hilt | IMPLEMENTED | |
 | Supabase (Postgres, Auth, Storage), Edge Functions, yerel öncelik + kuyruk, çakışma çözümü, hesap silme, dışa aktarma, yedek | IMPLEMENTED / PARTIAL | Kod + testler tamam; canlı projede doğrulanmadı |
 | Sağlayıcıdan bağımsız AI, anahtar istemcide yok, backend üzerinden, zaman aşımı/yeniden deneme/kota/maliyet, doğrulama, mock | IMPLEMENTED | Sunucu tarafında yalnızca Claude bağlayıcısı yazıldı (arayüz başkasına açık) |
+| Ücretsiz yapay zekâ (ek görev): yapay zekâsız varsayılan, telefondaki açık model (MediaPipe), bilgisayardaki model (Ollama/llama.cpp/LM Studio, yalnızca yerel ağ), ücretli bulut varsayılan derlemeden çıkarıldı, sessiz ücretli geri dönüş yok | IMPLEMENTED / PARTIAL | Bilgisayar yolu gerçek llama.cpp + Qwen2.5-1.5B ile uçtan uca test edildi. Telefondaki model derleniyor ve sarmalayıcısı test edildi; gerçek cihazda **doğrulanmadı**. Ayrıntı: [FREE_AI.md](FREE_AI.md) |
+| Kitaba sor (BM25 + yerel model ya da alıntı), TextRank özeti, sadakat denetimi, sistem TTS ile sesli dinleme | IMPLEMENTED | `FreeAiTest`, `AppUiTest.ask_the_book_answers_offline_with_sources` |
 | PDF metin çıkarımı (PdfBox-Android) | PARTIAL | Uygulandı, derleniyor; gerçek PDF'lerle cihazda test edilmedi (yapı mantığı birim testli) |
 | Taranmış PDF için OCR (ML Kit) | PARTIAL | Uygulandı; cihazda test edilmedi |
 | EPUB, TXT, Markdown, sınırları koruma, parçalama, ilerleme ve hata gösterimi | IMPLEMENTED | |

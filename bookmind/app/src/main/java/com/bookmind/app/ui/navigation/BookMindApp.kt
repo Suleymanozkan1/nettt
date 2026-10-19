@@ -38,6 +38,7 @@ import androidx.navigation.navArgument
 import com.bookmind.app.AppState
 import com.bookmind.app.R
 import com.bookmind.app.ui.analytics.AnalyticsScreen
+import com.bookmind.app.ui.ask.AskScreen
 import com.bookmind.app.ui.book.AddBookScreen
 import com.bookmind.app.ui.book.BookDetailScreen
 import com.bookmind.app.ui.book.ChapterScreen
@@ -160,6 +161,7 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
             onReview = { nav.navigate(Routes.review(bookId)) },
             onNotes = { nav.navigate(Routes.notes(bookId)) },
             onPlan = { nav.navigate(Routes.plan(bookId)) },
+            onAsk = { nav.navigate(Routes.ask(bookId)) },
             onDeleted = back,
         )
     }
@@ -210,6 +212,9 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
     }
     composable(Routes.CONNECTIONS) { ConnectionsScreen(onBack = back, onOpenConcept = { nav.navigate(Routes.concept(it)) }) }
     composable(Routes.PLAN, listOf(str("bookId"))) { entry -> PlanScreen(entry.arguments!!.getString("bookId")!!, onBack = back) }
+    composable(Routes.ASK, listOf(str("bookId"))) { entry ->
+        AskScreen(entry.arguments!!.getString("bookId")!!, onBack = back, onOpenChapter = { nav.navigate(Routes.chapter(it)) })
+    }
     composable(Routes.NOTIFICATIONS) { NotificationSettingsScreen(onBack = back) }
     composable(Routes.SETTINGS) { SettingsScreen(onNotifications = { nav.navigate(Routes.NOTIFICATIONS) }) }
 }

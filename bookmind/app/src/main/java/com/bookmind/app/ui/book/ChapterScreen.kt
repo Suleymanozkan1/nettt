@@ -103,7 +103,9 @@ fun ChapterScreen(
     val ch = s.chapter
     val cs = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize()) {
+        val speaker = com.bookmind.app.ui.components.rememberSpeaker()
         BackTopBar("", onBack) {
+            com.bookmind.app.ui.components.ListenButton(speaker) { ch.title + ".\n" + s.paragraphs.joinToString("\n") }
             IconButton({ onSummary(ch.bookId, ch.id) }) { Icon(Icons.Filled.Summarize, stringResource(R.string.summary_chapter)) }
             IconButton({ onAddNote(ch.bookId, ch.id, null) }) { Icon(Icons.Filled.NoteAdd, stringResource(R.string.add_note)) }
         }

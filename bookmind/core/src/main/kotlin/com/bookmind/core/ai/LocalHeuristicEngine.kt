@@ -14,6 +14,7 @@ import kotlin.math.min
  * labelled as "local" (not AI) in [GenerationInfo].
  */
 class LocalHeuristicEngine {
+    private companion object { const val DAMPING = 0.85 }
 
     data class ChapterInput(val index: Int, val title: String, val text: String, val pageStart: Int? = null)
 
@@ -26,22 +27,65 @@ class LocalHeuristicEngine {
 
     // ---------- Sentences ----------
 
-    /** Ranks sentences by content-word frequency, favouring paragraph openings, penalising very short/long ones. */
+    /**
+     * Picks the most central sentences with TextRank (Mihalcea & Tarau 2004): sentences are graph nodes, edges
+     * are weighted by shared stems normalised by sentence length, and PageRank finds the sentences the rest of
+     * the text "agrees" with. Paragraph openings get a small bonus, and near-duplicates of an already chosen
+     * sentence are skipped so the summary does not repeat itself. Returned in book order.
+     */
     fun keySentences(text: String, max: Int): List<Sentences.Span> {
         val sentences = Sentences.split(text).filter { it.text.length in 40..400 && Lexicon.contentWords(it.text).size >= 4 }
         if (sentences.isEmpty()) return emptyList()
-        val freq = HashMap<String, Int>()
-        sentences.forEach { s -> Lexicon.contentWords(s.text).map(Lexicon::stem).toSet().forEach { freq.merge(it, 1, Int::plus) } }
+        val stems = sentences.map { Lexicon.contentWords(it.text).map(Lexicon::stem).toSet() }
+        val n = sentences.size
+        val weights = Array(n) { DoubleArray(n) }
+        for (i in 0 until n) for (j in i + 1 until n) {
+            val shared = stems[i].count { it in stems[j] }
+            if (shared == 0) continue
+            val w = shared / (ln(stems[i].size + 1.0) + ln(stems[j].size + 1.0))
+            weights[i][j] = w; weights[j][i] = w
+        }
+        val outSum = DoubleArray(n) { i -> weights[i].sum() }
+        var rank = DoubleArray(n) { 1.0 / n }
+        repeat(40) {
+            val next = DoubleArray(n) { (1 - DAMPING) / n }
+            for (j in 0 until n) {
+                if (outSum[j] == 0.0) continue
+                val share = DAMPING * rank[j] / outSum[j]
+                for (i in 0 until n) if (weights[j][i] > 0) next[i] += share * weights[j][i]
+            }
+            rank = next
+        }
+        val top = rank.maxOrNull()?.takeIf { it > 0 } ?: 1.0
         val paragraphStarts = buildSet {
             add(0)
             Regex("\\n\\s*\\n").findAll(text).forEach { add(it.range.last + 1) }
         }
+        val scored = sentences.indices.map { i ->
+            val positionBonus = if (paragraphStarts.any { it in (sentences[i].start - 2)..sentences[i].start }) 0.12 else 0.0
+            val earlyBonus = if (i < 2) 0.08 else 0.0
+            i to rank[i] / top + positionBonus + earlyBonus
+        }.sortedByDescending { it.second }
+        val chosen = mutableListOf<Int>()
+        for ((i, _) in scored) {
+            if (chosen.size >= max) break
+            val redundant = chosen.any { c -> jaccard(stems[i], stems[c]) > 0.5 }
+            if (!redundant) chosen += i
+        }
+        return chosen.sorted().map { sentences[it] }
+    }
+
+    private fun jaccard(a: Set<String>, b: Set<String>): Double = if (a.isEmpty() && b.isEmpty()) 0.0 else a.intersect(b).size.toDouble() / a.union(b).size
+
+    /** The previous frequency-based ranking; kept only to compare summary quality in the evaluation report. */
+    internal fun keySentencesByFrequency(text: String, max: Int): List<Sentences.Span> {
+        val sentences = Sentences.split(text).filter { it.text.length in 40..400 && Lexicon.contentWords(it.text).size >= 4 }
+        if (sentences.isEmpty()) return emptyList()
+        val freq = HashMap<String, Int>()
+        sentences.forEach { s -> Lexicon.contentWords(s.text).map(Lexicon::stem).toSet().forEach { freq.merge(it, 1, Int::plus) } }
         val scored = sentences.mapIndexed { i, s ->
             val stems = Lexicon.contentWords(s.text).map(Lexicon::stem)
-            val base = stems.sumOf { ln(1.0 + (freq[it] ?: 0)) } / (stems.size + 4)
-            val positionBonus = if (paragraphStarts.any { it in (s.start - 2)..s.start }) 0.15 else 0.0
-            val earlyBonus = if (i < 3) 0.1 else 0.0
-            Triple(s, base + positionBonus + earlyBonus, i)
+            Triple(s, stems.sumOf { ln(1.0 + (freq[it] ?: 0)) } / (stems.size + 4) + if (i < 3) 0.1 else 0.0, i)
         }
         return scored.sortedByDescending { it.second }.take(max).sortedBy { it.third }.map { it.first }
     }
@@ -492,5 +536,32 @@ class LocalHeuristicEngine {
             }
         }
         return ConceptLinksDraft(links)
+    }
+
+    // ---------- Questions about the book ----------
+
+    /**
+     * Extractive answer: the sentences from the retrieved passages that share the most terms with the question.
+     * Nothing is generated; the reader sees the book's own words with their source.
+     */
+    fun answer(question: String, passages: List<com.bookmind.core.search.Passage>, lang: String? = null): BookAnswer {
+        val t = CoreText.of(lang)
+        val q = Lexicon.stems(question)
+        if (q.isEmpty() || passages.isEmpty()) return BookAnswer(t.answerNotFound, inBook = false, confidence = 0.0)
+        val scored = passages.withIndex().flatMap { (i, p) ->
+            Sentences.split(p.text).filter { it.text.length in 20..400 }.map { s ->
+                val stems = Lexicon.stems(s.text)
+                Triple(i, s.text, stems.count { it in q }.toDouble() / q.size)
+            }
+        }.filter { it.third > 0 }.sortedByDescending { it.third }.take(3)
+        if (scored.isEmpty()) return BookAnswer(t.answerNotFound, inBook = false, confidence = 0.0)
+        // Keep book order inside each passage so the excerpt reads naturally.
+        val chosen = scored.sortedWith(compareBy({ it.first }, { passages[it.first].text.indexOf(it.second) }))
+        return BookAnswer(
+            answer = t.answerFromBook + "\n\n" + chosen.joinToString("\n\n") { "“${it.second}”" },
+            citations = chosen.map { it.first }.distinct(),
+            inBook = true,
+            confidence = (scored.first().third * 0.6).coerceAtMost(0.6),
+        )
     }
 }

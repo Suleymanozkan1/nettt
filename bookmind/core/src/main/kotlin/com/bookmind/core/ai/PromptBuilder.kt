@@ -223,4 +223,18 @@ object PromptBuilder {
         """.trimIndent(),
         maxOutputTokens = 2_000,
     )
+
+    fun answer(question: String, passages: List<com.bookmind.core.search.Passage>, lang: String?) = AiRequest(
+        task = AiTask.ANSWER,
+        promptVersion = PromptVersions.ANSWER,
+        system = baseSystem(lang) + "\nAnswer only from the numbered passages. If they do not contain the answer, set inBook=false and say so briefly.",
+        user = """
+            Question: ${sanitize(question).take(500)}
+            Answer in 2-5 sentences. Cite the passage numbers you used.
+            Return JSON: {"answer":string,"citations":[int],"inBook":bool,"confidence":0..1}
+            ${passages.withIndex().joinToString("\n") { (i, p) -> bookBlock("[$i] ${p.chapterTitle}", p.text) }}
+        """.trimIndent(),
+        maxOutputTokens = 600,
+        temperature = 0.1,
+    )
 }

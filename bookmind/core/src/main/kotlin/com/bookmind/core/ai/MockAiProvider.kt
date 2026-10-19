@@ -50,6 +50,11 @@ class MockAiProvider(
             )
             AiTask.GRADE -> j.encodeToString(GradeResult.serializer(), local.grade(p["modelAnswer"].orEmpty(), p["rubric"]?.split('\n').orEmpty().filter { it.isNotBlank() }, p["answer"].orEmpty()))
             AiTask.STORY -> j.encodeToString(StoryDraft.serializer(), local.story(concepts.first(), chapters.firstOrNull()))
+            AiTask.ANSWER -> j.encodeToString(
+                BookAnswer.serializer(),
+                local.answer(p["question"].orEmpty(), p["passages"]?.let { j.decodeFromString(MockPayload.Passages.serializer(), it).items }.orEmpty()
+                    .map { com.bookmind.core.search.Passage(it.chapterIndex, it.title, 0, it.text.length, it.text) }),
+            )
             AiTask.CONCEPT_LINKS -> j.encodeToString(
                 ConceptLinksDraft.serializer(),
                 local.links(p["conceptsByBook"]?.let { j.decodeFromString(MockPayload.ConceptsByBook.serializer(), it).map }.orEmpty()),
@@ -73,4 +78,10 @@ object MockPayload {
 
     @kotlinx.serialization.Serializable
     data class ConceptsByBook(val map: Map<String, List<String>>)
+
+    @kotlinx.serialization.Serializable
+    data class Passage(val chapterIndex: Int, val title: String, val text: String)
+
+    @kotlinx.serialization.Serializable
+    data class Passages(val items: List<Passage>)
 }

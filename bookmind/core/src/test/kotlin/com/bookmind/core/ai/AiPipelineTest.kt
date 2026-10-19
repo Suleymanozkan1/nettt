@@ -135,11 +135,15 @@ class AiPipelineTest {
         assertIs<AiResult.Failed>(r1)
         val local = LearningAi({ null }).analyzeChapter(bookInfo, chapters[0], chapters[0].text, "") as AiResult.Ok
         assertTrue(local.warnings.isEmpty(), "on-device mode is a choice, not a warning")
+        // The daily budget only limits providers that can cost money.
         val mock = MockAiProvider()
-        val r2 = LearningAi({ mock }, meter = Meter(allowed = false)).analyzeChapter(bookInfo, chapters[0], chapters[0].text, "")
+        val paid = object : AiProvider by mock { override val free = false }
+        val r2 = LearningAi({ paid }, meter = Meter(allowed = false)).analyzeChapter(bookInfo, chapters[0], chapters[0].text, "")
         assertFalse((r2 as AiResult.Ok).info.aiGenerated)
         assertTrue(r2.warnings.single().contains("sınır"))
         assertTrue(mock.requests.isEmpty())
+        val r3 = LearningAi({ mock }, meter = Meter(allowed = false)).analyzeChapter(bookInfo, chapters[0], chapters[0].text, "")
+        assertTrue((r3 as AiResult.Ok).info.aiGenerated, "free local models are not metered")
     }
 
     @Test fun `summary sources are verified against chapter text`() = runTest {

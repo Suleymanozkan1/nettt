@@ -74,6 +74,9 @@ object OutputValidator {
             m.copy(edges = m.edges.filter { it.from in ids && it.to in ids && it.from != it.to })
         }
         if (sections.isEmpty() && ideas.isEmpty() && (map?.nodes.isNullOrEmpty())) throw AiException.InvalidOutput("empty summary")
+        // Numbers and names the model wrote must exist in the book; otherwise the reader is told.
+        val generated = sections.flatMap { listOf(it.body) + it.bullets } + ideas.flatMap { listOf(it.idea, it.explanation, it.support, it.example) }
+        Faithfulness.check(generated, chapterTexts).takeIf { !it.clean }?.let { warnings += t.unsupportedClaims(it.items.joinToString(", ")) }
         return Validated(doc.copy(sections = sections, ideas = ideas, conceptMap = map), warnings.distinct())
     }
 
@@ -147,5 +150,14 @@ object OutputValidator {
             } else l.copy(fromConcept = from, toConcept = to, confidence = l.confidence.coerceIn(0.0, 1.0))
         }
         return Validated(links, warnings.distinct())
+    }
+
+    /** Drops citations that point nowhere; an answer with no valid citation is marked as not grounded. */
+    fun answer(a: BookAnswer, passages: List<com.bookmind.core.search.Passage>, lang: String? = null): Validated<BookAnswer> {
+        if (a.answer.isBlank()) throw AiException.InvalidOutput("empty answer")
+        val citations = a.citations.filter { it in passages.indices }.distinct()
+        val warnings = mutableListOf<String>()
+        if (a.inBook && citations.isEmpty()) warnings += CoreText.of(lang).answerUncited
+        return Validated(a.copy(answer = a.answer.trim(), citations = citations, confidence = a.confidence.coerceIn(0.0, 1.0)), warnings)
     }
 }

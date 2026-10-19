@@ -183,7 +183,7 @@ class BookProcessor @Inject constructor(
     }
 
     private suspend fun analyzeChapter(book: BookEntity, info: LearningAi.Book, chapter: ChapterEntity, input: LocalHeuristicEngine.ChapterInput, userId: String) {
-        val chunks = Chunker.chunk(input.index, input.text, maxChars = 12_000, overlapChars = 400)
+        val chunks = Chunker.chunk(input.index, input.text, maxChars = ai.chunkChars(), overlapChars = 400)
         val analyses = mutableListOf<ChapterAnalysis>()
         var generatedBy: GenerationInfo? = null
         val warnings = mutableListOf<String>()

@@ -17,8 +17,15 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Where generated content comes from. LOCAL never sends book text off the device. */
-enum class AiMode { LOCAL, REMOTE, MOCK }
+/**
+ * Where generated content comes from. All modes except REMOTE are free:
+ * - LOCAL: no AI; classic on-device algorithms (TextRank, BM25, rules). Default.
+ * - ON_DEVICE: an open-weights model file running on the phone (MediaPipe LLM Inference).
+ * - COMPUTER: a model on the user's own computer on the local network (Ollama, llama.cpp, LM Studio).
+ * - REMOTE: the optional paid cloud backend; only exists in builds made with bookmind.enableCloudAi=true.
+ * - MOCK: deterministic test provider (debug builds).
+ */
+enum class AiMode { LOCAL, ON_DEVICE, COMPUTER, REMOTE, MOCK }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
@@ -40,6 +47,14 @@ data class AppSettings(
     val lastSyncAt: Long = 0,
     /** Per-table pull cursors (server timestamps, ISO-8601) as a JSON object. */
     val syncCursors: String = "{}",
+    /** Base URL of the user's own model server, e.g. http://192.168.1.20:11434 (Ollama). */
+    val computerUrl: String = "",
+    val computerModel: String = "",
+    /** Context window of the computer model in tokens; prompts are sized to fit. */
+    val computerContextTokens: Int = 8_192,
+    /** File name of the imported on-device model inside filesDir/models. */
+    val onDeviceModel: String = "",
+    val onDeviceContextTokens: Int = 2_048,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("settings")
@@ -62,47 +77,41 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         val summaryLength = stringPreferencesKey("summary_length")
         val lastSync = longPreferencesKey("last_sync_at")
         val cursors = stringPreferencesKey("sync_cursors")
+        val computerUrl = stringPreferencesKey("computer_url")
+        val computerModel = stringPreferencesKey("computer_model")
+        val computerContext = intPreferencesKey("computer_context")
+        val onDeviceModel = stringPreferencesKey("on_device_model")
+        val onDeviceContext = intPreferencesKey("on_device_context")
     }
 
-    val settings: Flow<AppSettings> = store.data.map { p ->
-        AppSettings(
-            onboardingDone = p[Keys.onboarding] ?: false,
-            theme = p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
-            language = AppLanguage.normalize(p[Keys.language]),
-            aiMode = p[Keys.aiMode]?.let { runCatching { AiMode.valueOf(it) }.getOrNull() } ?: AiMode.LOCAL,
-            algorithm = p[Keys.algorithm]?.let { runCatching { SrsAlgorithm.valueOf(it) }.getOrNull() } ?: SrsAlgorithm.FSRS,
-            desiredRetention = (p[Keys.retention] ?: 0.9f).coerceIn(0.7f, 0.97f),
-            newItemsPerDay = (p[Keys.newPerDay] ?: 15).coerceIn(0, 200),
-            dailyAiRequestLimit = (p[Keys.aiLimit] ?: 60).coerceIn(0, 1_000),
-            spoilerFree = p[Keys.spoilerFree] ?: true,
-            teachingLevel = p[Keys.teachingLevel] ?: "BASIC",
-            summaryLength = p[Keys.summaryLength] ?: "MEDIUM",
-            lastSyncAt = p[Keys.lastSync] ?: 0,
-            syncCursors = p[Keys.cursors] ?: "{}",
-        )
-    }
+    val settings: Flow<AppSettings> = store.data.map(::read)
+
+    private fun read(p: Preferences) = AppSettings(
+        onboardingDone = p[Keys.onboarding] ?: false,
+        theme = p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
+        language = AppLanguage.normalize(p[Keys.language]),
+        aiMode = p[Keys.aiMode]?.let { runCatching { AiMode.valueOf(it) }.getOrNull() } ?: AiMode.LOCAL,
+        algorithm = p[Keys.algorithm]?.let { runCatching { SrsAlgorithm.valueOf(it) }.getOrNull() } ?: SrsAlgorithm.FSRS,
+        desiredRetention = (p[Keys.retention] ?: 0.9f).coerceIn(0.7f, 0.97f),
+        newItemsPerDay = (p[Keys.newPerDay] ?: 15).coerceIn(0, 200),
+        dailyAiRequestLimit = (p[Keys.aiLimit] ?: 60).coerceIn(0, 1_000),
+        spoilerFree = p[Keys.spoilerFree] ?: true,
+        teachingLevel = p[Keys.teachingLevel] ?: "BASIC",
+        summaryLength = p[Keys.summaryLength] ?: "MEDIUM",
+        lastSyncAt = p[Keys.lastSync] ?: 0,
+        syncCursors = p[Keys.cursors] ?: "{}",
+        computerUrl = p[Keys.computerUrl] ?: "",
+        computerModel = p[Keys.computerModel] ?: "",
+        computerContextTokens = (p[Keys.computerContext] ?: 8_192).coerceIn(1_024, 131_072),
+        onDeviceModel = p[Keys.onDeviceModel] ?: "",
+        onDeviceContextTokens = (p[Keys.onDeviceContext] ?: 2_048).coerceIn(512, 32_768),
+    )
 
     suspend fun current(): AppSettings = settings.first()
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         store.edit { p ->
-            val s = transform(
-                AppSettings(
-                    p[Keys.onboarding] ?: false,
-                    p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
-                    AppLanguage.normalize(p[Keys.language]),
-                    p[Keys.aiMode]?.let { runCatching { AiMode.valueOf(it) }.getOrNull() } ?: AiMode.LOCAL,
-                    p[Keys.algorithm]?.let { runCatching { SrsAlgorithm.valueOf(it) }.getOrNull() } ?: SrsAlgorithm.FSRS,
-                    p[Keys.retention] ?: 0.9f,
-                    p[Keys.newPerDay] ?: 15,
-                    p[Keys.aiLimit] ?: 60,
-                    p[Keys.spoilerFree] ?: true,
-                    p[Keys.teachingLevel] ?: "BASIC",
-                    p[Keys.summaryLength] ?: "MEDIUM",
-                    p[Keys.lastSync] ?: 0,
-                    p[Keys.cursors] ?: "{}",
-                ),
-            )
+            val s = transform(read(p))
             p[Keys.onboarding] = s.onboardingDone
             p[Keys.theme] = s.theme.name
             p[Keys.language] = AppLanguage.normalize(s.language)
@@ -117,6 +126,11 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
             p[Keys.summaryLength] = s.summaryLength
             p[Keys.lastSync] = s.lastSyncAt
             p[Keys.cursors] = s.syncCursors
+            p[Keys.computerUrl] = s.computerUrl.trim()
+            p[Keys.computerModel] = s.computerModel.trim()
+            p[Keys.computerContext] = s.computerContextTokens
+            p[Keys.onDeviceModel] = s.onDeviceModel
+            p[Keys.onDeviceContext] = s.onDeviceContextTokens
         }
     }
 

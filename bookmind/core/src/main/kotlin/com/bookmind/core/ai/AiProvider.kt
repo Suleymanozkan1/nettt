@@ -1,15 +1,21 @@
 package com.bookmind.core.ai
 
 /**
- * Provider-agnostic LLM boundary. Implementations: [RemoteAiProvider] (calls our backend, which holds the API
- * keys), [MockAiProvider] (deterministic, no network). The app never embeds provider API keys.
+ * Provider-agnostic LLM boundary. Free implementations: [LocalServerProvider] (a model on the user's own
+ * computer via Ollama/llama.cpp/LM Studio), [OnDeviceProvider] (a model file running on the phone),
+ * [MockAiProvider] (deterministic, no network). [RemoteAiProvider] calls an optional paid cloud backend and is
+ * compiled out of default builds. The app never embeds provider API keys.
  */
 interface AiProvider {
     val id: String
+    /** Largest prompt (system + user, in characters) this provider can take; book excerpts are cut to fit. */
+    val inputBudgetChars: Int get() = 60_000
+    /** False only for providers that can cost money per request. */
+    val free: Boolean get() = true
     suspend fun complete(request: AiRequest): AiResponse
 }
 
-enum class AiTask { BOOK_ANALYSIS, CHAPTER_ANALYSIS, SUMMARY, QUIZ, TEACH, GRADE, STORY, CONCEPT_LINKS }
+enum class AiTask { BOOK_ANALYSIS, CHAPTER_ANALYSIS, SUMMARY, QUIZ, TEACH, GRADE, STORY, CONCEPT_LINKS, ANSWER }
 
 data class AiRequest(
     val task: AiTask,

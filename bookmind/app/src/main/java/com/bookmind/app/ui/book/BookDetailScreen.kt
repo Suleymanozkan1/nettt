@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -125,6 +126,7 @@ fun BookDetailScreen(
     onReview: () -> Unit,
     onNotes: () -> Unit,
     onPlan: () -> Unit,
+    onAsk: () -> Unit,
     onDeleted: () -> Unit,
     vm: BookDetailViewModel = hiltViewModel(),
 ) {
@@ -186,6 +188,16 @@ fun BookDetailScreen(
                             stringResource(if (b.completedAt == null) R.string.mark_completed else R.string.mark_not_completed),
                             x.success, x.successContainer, Modifier.weight(1f),
                         ) { vm.complete(b.completedAt == null) }
+                    }
+                    AppCard(Modifier.fillMaxWidth().padding(top = 10.dp), onClick = onAsk, contentPadding = PaddingValues(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconBadge(Icons.Filled.QuestionAnswer, x.info, x.infoContainer, size = 38.dp, iconSize = 20.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(stringResource(R.string.ask_title), style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(R.string.ask_card_body), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
                 item { SectionHeader(stringResource(R.string.summaries)) }

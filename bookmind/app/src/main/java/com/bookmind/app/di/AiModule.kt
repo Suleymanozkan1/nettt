@@ -1,5 +1,7 @@
 package com.bookmind.app.di
 
+import com.bookmind.app.BuildConfig
+import com.bookmind.app.ai.OnDeviceModels
 import com.bookmind.app.data.db.AiCacheEntity
 import com.bookmind.app.data.db.AiUsageEntity
 import com.bookmind.app.data.db.BookMindDatabase
@@ -9,7 +11,12 @@ import com.bookmind.app.data.settings.AiMode
 import com.bookmind.app.data.settings.SettingsRepository
 import com.bookmind.app.util.AppClock
 import com.bookmind.core.ai.AiCache
+import com.bookmind.core.ai.AiException
 import com.bookmind.core.ai.AiProvider
+import com.bookmind.core.ai.AiRequest
+import com.bookmind.core.ai.ChatTemplate
+import com.bookmind.core.ai.LocalServerProvider
+import com.bookmind.core.ai.OnDeviceProvider
 import com.bookmind.core.ai.AiResponse
 import com.bookmind.core.ai.AiTask
 import com.bookmind.core.ai.AiUsageMeter
@@ -26,6 +33,15 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AiModule {
+    /** Characters of prompt that fit a context of [tokens], leaving ~1k tokens for the answer (≈3 chars/token). */
+    fun budgetChars(tokens: Int) = ((tokens - 1_024).coerceAtLeast(512) * 3)
+
+    /** The chosen local model is not set up (no file, no server address): the on-device engine is used, with a warning. */
+    private object Unavailable : AiProvider {
+        override val id = "unavailable"
+        override suspend fun complete(request: AiRequest): AiResponse = throw AiException.NotConfigured()
+    }
+
     @Provides @Singleton
     fun learningAi(
         db: BookMindDatabase,
@@ -34,15 +50,31 @@ object AiModule {
         config: BackendConfig,
         clock: AppClock,
         http: OkHttpClient,
+        models: OnDeviceModels,
     ): LearningAi {
-        val remote = if (config.isConfigured) RemoteAiProvider(config.aiEndpoint, config.anonKey, { auth.accessToken() }, http) else null
+        // Paid cloud AI only exists in builds made with bookmind.enableCloudAi=true; default builds are free-only.
+        val remote = if (BuildConfig.CLOUD_AI_ENABLED && config.isConfigured) RemoteAiProvider(config.aiEndpoint, config.anonKey, { auth.accessToken() }, http) else null
         val mock = MockAiProvider(latencyMs = 300)
+        var computer: Pair<String, LocalServerProvider>? = null
         val providerSource: suspend () -> AiProvider? = {
-            when (settings.current().aiMode) {
+            val s = settings.current()
+            when (s.aiMode) {
                 AiMode.LOCAL -> null
                 AiMode.MOCK -> mock
-                // Remote needs a configured backend and a signed-in user; otherwise fall back to on-device.
-                AiMode.REMOTE -> remote?.takeIf { auth.account.value != null }
+                AiMode.ON_DEVICE -> models.file(s.onDeviceModel)?.let { f ->
+                    OnDeviceProvider(f.name, ChatTemplate.forModelName(f.name), budgetChars(s.onDeviceContextTokens)) { prompt ->
+                        models.generate(f.name, s.onDeviceContextTokens, prompt)
+                    }
+                } ?: Unavailable
+                AiMode.COMPUTER -> {
+                    val key = "${s.computerUrl}|${s.computerModel}|${s.computerContextTokens}"
+                    computer?.takeIf { it.first == key }?.second
+                        ?: runCatching { LocalServerProvider(s.computerUrl, s.computerModel, budgetChars(s.computerContextTokens), http) }.getOrNull()
+                            ?.also { computer = key to it }
+                        ?: Unavailable
+                }
+                // Never a silent fallback to a paid service: without the cloud build flag this is simply unavailable.
+                AiMode.REMOTE -> remote?.takeIf { auth.account.value != null } ?: Unavailable
             }
         }
         val cache = object : AiCache {

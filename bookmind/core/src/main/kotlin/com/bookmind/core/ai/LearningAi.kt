@@ -56,10 +56,13 @@ class LearningAi(
             // On-device mode is the user's choice, not a problem: the origin badge says "local", no warning needed.
             return localOrFail(fallback, request.promptVersion, null, AiException.NotConfigured())
         }
-        if (meter != null && !meter.allow(request.task)) {
+        // Paid providers count against the user's daily budget; free local models are not metered.
+        if (!provider.free && meter != null && !meter.allow(request.task)) {
             return localOrFail(fallback, request.promptVersion, t.quotaReached, AiException.QuotaExceeded(null))
         }
 
+        @Suppress("NAME_SHADOWING")
+        val request = fitToBudget(request, provider.inputBudgetChars)
         val inputHash = Checksums.sha256(request.system + "\u0000" + request.user)
         val cacheKey = "${request.task}:${request.promptVersion}:${provider.id}:$inputHash"
         cache?.get(cacheKey)?.let { cached ->
@@ -96,8 +99,35 @@ class LearningAi(
                 }
             }
         }
-        return if (allowFallback) localOrFail(fallback, request.promptVersion, t.aiFailed(lastError.message.orEmpty()), lastError)
+        return if (allowFallback) localOrFail(fallback, request.promptVersion, t.aiFailed(t.aiError(lastError)), lastError)
         else AiResult.Failed(lastError)
+    }
+
+    companion object {
+        private val bookText = Regex("(<book_text[^>]*>\\n)([\\s\\S]*?)(\\n</book_text>)")
+
+        /**
+         * Shrinks a prompt to [budget] characters by trimming the book excerpts (proportionally, keeping each
+         * excerpt's beginning) and never the instructions or the output schema. Small local models have short
+         * context windows; an oversized prompt would otherwise be cut by the server mid-instruction.
+         */
+        fun fitToBudget(request: AiRequest, budget: Int): AiRequest {
+            val total = request.system.length + request.user.length
+            if (total <= budget) return request
+            val blocks = bookText.findAll(request.user).toList()
+            val bookChars = blocks.sumOf { it.groupValues[2].length }
+            val excess = total - budget
+            if (bookChars == 0 || excess >= bookChars) {
+                return request.copy(user = request.user.take((budget - request.system.length).coerceAtLeast(500)))
+            }
+            val keepRatio = (bookChars - excess - 200).coerceAtLeast(0).toDouble() / bookChars
+            val user = bookText.replace(request.user) { m ->
+                val text = m.groupValues[2]
+                val keep = (text.length * keepRatio).toInt()
+                m.groupValues[1] + (if (keep < text.length) text.take(keep).trimEnd() + " […]" else text) + m.groupValues[3]
+            }
+            return request.copy(user = user)
+        }
     }
 
     private fun <T> localOrFail(fallback: (() -> T)?, promptVersion: String, warning: String?, error: AiException): AiResult<T> =
@@ -110,6 +140,15 @@ class LearningAi(
 
     private fun conceptsPayload(concepts: List<LocalHeuristicEngine.ConceptInput>) =
         AiJson.json.encodeToString(MockPayload.Concepts.serializer(), MockPayload.Concepts(concepts.map { MockPayload.Concept(it.title, it.explanation, it.chapterIndex, it.quote) }))
+
+    /**
+     * Chunk size for chapter analysis: small local models get smaller chunks (map step of a map-reduce over the
+     * chapter) instead of having their prompt trimmed, so no part of the book is skipped.
+     */
+    suspend fun chunkChars(): Int {
+        val provider = try { providerSource() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        return ((provider?.inputBudgetChars ?: 20_000) * 0.6).toInt().coerceIn(2_000, 12_000)
+    }
 
     // ----- Tasks -----
 
@@ -236,5 +275,13 @@ class LearningAi(
             is AiResult.Ok -> AiResult.Ok(result.value.links, result.info, result.warnings, result.fromCache)
             is AiResult.Failed -> result
         }
+    }
+
+    /** Answers a question from retrieved passages; the on-device fallback quotes the best matching sentences. */
+    suspend fun answer(question: String, passages: List<com.bookmind.core.search.Passage>, lang: String?): AiResult<BookAnswer> {
+        val request = PromptBuilder.answer(question, passages, lang)
+            .copy(payload = mapOf("question" to question, "passages" to AiJson.json.encodeToString(MockPayload.Passages.serializer(),
+                MockPayload.Passages(passages.map { MockPayload.Passage(it.chapterIndex, it.chapterTitle, it.text) }))))
+        return runUncached(request, BookAnswer.serializer(), { a -> OutputValidator.answer(a, passages, lang) }, lang) { local.answer(question, passages, lang) }
     }
 }

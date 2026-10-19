@@ -140,8 +140,10 @@ fun SummaryScreen(bookId: String, type: String, chapterId: String?, onBack: () -
     val cs = MaterialTheme.colorScheme
 
     Column(Modifier.fillMaxSize()) {
+        val speaker = com.bookmind.app.ui.components.rememberSpeaker()
         BackTopBar(summaryTitle(vm.type), onBack) {
             if (summary != null) {
+                com.bookmind.app.ui.components.ListenButton(speaker) { summary?.userEditedText ?: doc?.plainText().orEmpty() }
                 IconButton({ editing = true }) { Icon(Icons.Filled.Edit, stringResource(R.string.edit)) }
                 IconButton(vm::generate, enabled = !busy) { Icon(Icons.Filled.Refresh, stringResource(R.string.regenerate)) }
             }

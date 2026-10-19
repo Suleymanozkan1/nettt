@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -113,7 +114,7 @@ class AppUiTest {
         clickTab(R.string.tab_library)
         waitForText("Öğrenmenin Bilimi")
         compose.onAllNodesWithText("Öğrenmenin Bilimi").onFirst().performClick()
-        waitForText("Unutma Eğrisi")
+        waitForText(s(R.string.summary_quick))
         compose.onNodeWithText(s(R.string.summary_quick)).performClick()
         compose.onNodeWithText(s(R.string.generate)).performClick()
         waitForText("Temel fikir")
@@ -174,5 +175,23 @@ class AppUiTest {
         compose.onNode(hasSetTextAction() and hasText(s(R.string.book_title))).performTextInput("Kısa")
         compose.onNode(hasSetTextAction() and hasText(s(R.string.book_text))).performTextInput("çok kısa metin")
         waitForText(s(R.string.text_too_short))
+    }
+
+    @Test fun ask_the_book_answers_offline_with_sources() {
+        ready()
+        launch()
+        waitForText(s(R.string.home_title))
+        clickTab(R.string.tab_library)
+        waitForText("Öğrenmenin Bilimi")
+        compose.onAllNodesWithText("Öğrenmenin Bilimi").onFirst().performClick()
+        waitForText(s(R.string.ask_title))
+        compose.onNode(hasText(s(R.string.ask_title)) and hasClickAction()).performScrollTo().performClick()
+        waitForText(s(R.string.ask_empty_title))
+        compose.onNode(hasSetTextAction()).performTextInput("Test etkisi nedir?")
+        compose.onNodeWithContentDescription(s(R.string.send)).performClick()
+        // No AI model selected: BM25 finds the passage and the book's own sentences are quoted with their chapter.
+        waitForText("Kitapta sorunla en çok örtüşen cümleler", 15_000)
+        waitForText(s(R.string.ask_sources))
+        waitForText("Aktif Hatırlama")
     }
 }
