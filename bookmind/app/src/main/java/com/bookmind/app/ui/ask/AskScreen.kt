@@ -125,6 +125,9 @@ fun AskScreen(bookId: String, onBack: () -> Unit, onOpenChapter: (String) -> Uni
     val busy by vm.busy.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     val list = rememberLazyListState()
+    // Close the keyboard once a question is sent so the answer is not hidden behind it.
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val send = { q: String -> focus.clearFocus(); vm.ask(q) }
     val cs = MaterialTheme.colorScheme
     LaunchedEffect(exchanges.size, busy) { if (exchanges.isNotEmpty()) list.animateScrollToItem(exchanges.lastIndex) }
     val examples = listOf(stringResource(R.string.ask_example_1), stringResource(R.string.ask_example_2))
@@ -135,7 +138,7 @@ fun AskScreen(bookId: String, onBack: () -> Unit, onOpenChapter: (String) -> Uni
             if (exchanges.isEmpty()) item {
                 EmptyState(stringResource(R.string.ask_empty_title), stringResource(R.string.ask_empty_body), icon = Icons.Filled.QuestionAnswer)
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    examples.forEach { e -> ChoiceChip(false, e, { vm.ask(e) }) }
+                    examples.forEach { e -> ChoiceChip(false, e, { send(e) }) }
                 }
             }
             items(exchanges) { ex ->
@@ -186,7 +189,7 @@ fun AskScreen(bookId: String, onBack: () -> Unit, onOpenChapter: (String) -> Uni
                 Spacer(Modifier.width(8.dp))
                 val canSend = input.isNotBlank() && !busy
                 Box(Modifier.size(50.dp).clip(CircleShape).background(if (canSend) cs.primary else cs.surfaceContainerHighest)
-                    .clickable(enabled = canSend) { vm.ask(input); input = "" }, contentAlignment = Alignment.Center) {
+                    .clickable(enabled = canSend) { send(input); input = "" }, contentAlignment = Alignment.Center) {
                     Icon(Icons.AutoMirrored.Filled.Send, stringResource(R.string.send), tint = if (canSend) cs.onPrimary else cs.onSurfaceVariant)
                 }
             }

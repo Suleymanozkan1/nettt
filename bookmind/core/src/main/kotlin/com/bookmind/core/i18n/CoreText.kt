@@ -233,7 +233,7 @@ sealed class CoreText {
         override val reviewWeakChapter = "Zorlandığın bölümü tekrar et"
 
         override val quotaReached = "Günlük yapay zekâ kullanım sınırına ulaşıldı; yerel yöntem kullanıldı."
-        override fun aiFailed(reason: String) = "Yapay zekâ yanıtı alınamadı ($reason); yerel yöntem kullanıldı."
+        override fun aiFailed(reason: String) = "Yapay zekâ yanıtı alınamadı ($reason); klasik yöntem kullanıldı."
         override val notEnoughConcepts = "Soru üretmek için yeterli kavram yok"
         override val storySourceUnverified = "Hikâyenin kitap kaynağı doğrulanamadı; üretilmiş örnek olarak işaretlendi."
         override fun quoteRemoved(term: String) = "“$term” için verilen alıntı kitapta bulunamadı; alıntı kaldırıldı."
@@ -371,7 +371,7 @@ sealed class CoreText {
         override val reviewWeakChapter = "Review the chapter you found hard"
 
         override val quotaReached = "Daily AI usage limit reached; the on-device method was used."
-        override fun aiFailed(reason: String) = "No AI response ($reason); the on-device method was used."
+        override fun aiFailed(reason: String) = "No AI response ($reason); the classic method was used."
         override val notEnoughConcepts = "Not enough concepts to create questions"
         override val storySourceUnverified = "The story's source in the book could not be verified; it is marked as a generated example."
         override fun quoteRemoved(term: String) = "The quote given for “$term” was not found in the book and was removed."

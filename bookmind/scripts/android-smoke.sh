@@ -118,11 +118,21 @@ if [ "${AI_SMOKE:-0}" = 1 ]; then
   tap_text "Type your question"
   adb shell input text "Why%sdoes%sspaced%srepetition%swork?"; sleep 1
   tap_text "Send"
-  if ! wait_text "AI · Qwen3 0.6B" 600; then
-    adb exec-out screencap -p > "$OUT/06-ask.png"
+  # The answer bubble can be taller than the small emulator screen: scroll it up while waiting for the origin label.
+  found=""; deadline=$((SECONDS + 600))
+  while [ $SECONDS -lt $deadline ]; do
+    if [ -n "$(find_text "AI · Qwen3 0.6B")" ]; then found=1; break; fi
+    grep -q 'text="Searching the book…"' "$OUT/ui.xml" || {
+      size=$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1); w=${size%x*}; h=${size#*x}
+      adb shell input swipe $((w / 2)) $((h * 6 / 10)) $((w / 2)) $((h * 3 / 10)) 300
+    }
+    sleep 3
+  done
+  adb exec-out screencap -p > "$OUT/06-ask.png"
+  if [ -z "$found" ]; then
+    grep -q "No AI response" "$OUT/ui.xml" && echo "FAIL: the model failed and the classic method answered"
     echo "FAIL: the answer did not come from the on-device model"; exit 1
   fi
-  adb exec-out screencap -p > "$OUT/06-ask.png"
 fi
 
 echo "== crash check"

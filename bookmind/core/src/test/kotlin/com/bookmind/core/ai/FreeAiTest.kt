@@ -50,7 +50,7 @@ class FreeAiTest {
         val r = LearningAi({ local }, baseBackoffMs = 1).analyzeChapter(LearningAi.Book("K", null, "tr", BookGenre.INFORMATIONAL), chapter, chapter.text, "")
         r as AiResult.Ok
         assertFalse(r.info.aiGenerated)
-        assertTrue(r.warnings.single().contains("yerel yöntem"))
+        assertTrue(r.warnings.single().contains("klasik yöntem"))
     }
 
     private val book = MarkdownParser.parse(TestFixtures.demoBookMarkdown)

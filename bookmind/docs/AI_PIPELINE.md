@@ -37,7 +37,7 @@ için yalnızca Edge Function'ın `create` bağımlılığı değiştirilir; ist
    - Puanlama: skor ve güven 0..1'e sıkıştırılır; düşük güven (<0,6) UI'da "yaklaşık" olarak gösterilir.
    - Kitaplar arası bağlantılarda yalnızca var olan kavramlar kabul edilir.
 6. **Geri düşme:** tüm denemeler başarısızsa yerel motor sonucu kullanılır ve uyarı eklenir
-   ("Yapay zekâ yanıtı alınamadı…; yerel yöntem kullanıldı").
+   ("Yapay zekâ yanıtı alınamadı…; klasik yöntem kullanıldı").
 7. **Kayıt:** her üretilen nesneye `GenerationInfo` (motor, model, prompt sürümü, şema sürümü, AI mi, girdi özeti,
    token sayıları) eklenir. UI kökeni rozetle gösterir: *Yapay zekâ (model)*, *Cihaz üzerinde, kitaptan seçildi*,
    *Senin düzenlemen*.

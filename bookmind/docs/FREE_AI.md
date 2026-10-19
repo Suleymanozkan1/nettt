@@ -59,7 +59,7 @@ Uygulamaya gömülü API anahtarı yoktu. Tek ücretli parça bulut yapay zekâ 
 ### Güvenceler
 
 - **Sessiz ücretli geri dönüş yok.** Model bir şeyi üretemezse (`AiException`) `LearningAi` yapay zekâsız yönteme geçer
-  ve ekranda "Yapay zekâ yanıtı alınamadı (…); yerel yöntem kullanıldı." uyarısı görünür. Bulut sağlayıcı varsayılan
+  ve ekranda "Yapay zekâ yanıtı alınamadı (…); klasik yöntem kullanıldı." uyarısı görünür. Bulut sağlayıcı varsayılan
   derlemede hiç oluşturulmaz (`BuildConfig.CLOUD_AI_ENABLED = false`).
 - **Kitap metni telefondan çıkmaz.** Yapay zekâ için tek ağ bağlantısı modelin indirilmesidir; istekte kullanıcıya ya da
   kitaba ait hiçbir veri yoktur. Ağ yapılandırması yeniden **yalnızca HTTPS**'tir.

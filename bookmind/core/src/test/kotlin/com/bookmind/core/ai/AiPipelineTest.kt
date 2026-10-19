@@ -124,7 +124,7 @@ class AiPipelineTest {
         assertIs<AiResult.Ok<ChapterAnalysis>>(r)
         assertFalse(r.info.aiGenerated)
         assertEquals("local", r.info.engine)
-        assertTrue(r.warnings.single().contains("yerel"))
+        assertTrue(r.warnings.single().contains("klasik"))
     }
 
     @Test fun `non-retryable errors do not retry`() = runTest {

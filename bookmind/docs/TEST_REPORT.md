@@ -7,7 +7,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 
 | Paket | Komut | Test | Sonuç |
 |---|---|---|---|
-| Core birim testleri | `./gradlew :core:test` | 100 (+1 isteğe bağlı) | ✅ 100/100 |
+| Core birim testleri | `./gradlew :core:test` | 101 (+1 isteğe bağlı) | ✅ 101/101 |
 | Uygulama (Robolectric: Room, hat, depolar, senkron, Compose UI) | `./gradlew :app:testDebugUnitTest` | 42 (+4 isteğe bağlı) | ✅ 42/42 |
 | SQL migration + RLS | `bash scripts/test-supabase-sql.sh` | 9 senaryo grubu | ✅ |
 | Edge Functions | `deno test --allow-env tests/` (+ `deno check`) | 8 | ✅ 8/8 |
@@ -16,7 +16,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | Telefondaki gerçek model | `LocalModelEvaluationTest` (LiteRT-LM + Gemma 4 E2B `.litertlm`) | 2 kitap | ✅ bkz. [FREE_AI.md](FREE_AI.md#4-değerlendirme) |
 | Emülatörde release APK duman testi | `scripts/android-smoke.sh` (CI, API 34) | 1 akış | bkz. "Cihaz testi" |
 
-## Birim testleri (core, 100)
+## Birim testleri (core, 101)
 
 | Sınıf | Adet | Kapsam |
 |---|---|---|
@@ -25,7 +25,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | `OutputLanguageTest` | 4 | İngilizce demo kitaptan İngilizce kavramlar; yerel özet, soru, öğretmen, notlandırma, plan, ayrıştırıcı yedek başlıkları ve kaynak etiketlerinin seçilen dili izlemesi; Türkçenin varsayılan kalması |
 | `ParsersTest` | 17 | Markdown bölümleri, satır içi biçim temizleme, TR/EN başlık tespiti ve içindekiler eleme, başlıksız metinde sentetik bölümler, PDF anahattı/başlık sayfaları/taranmış PDF (OCR gerekli)/tire birleştirme/tekrarlayan üst bilgi, cümle bölme (kısaltma, ondalık), parçalama ofsetleri, sihirli bayt tespiti, UTF-8 BOM ve Windows-1254, Türkçe büyük/küçük harf, dil tespiti, SHA-256, kaynak etiketi |
 | `EpubParserTest` | 5 | Meta veri, spine sırası, nav başlıkları, NCX/başlık geri düşmesi, iç içe öğe tekrarlamama, script temizliği, DRM reddi, eksik container, yol normalleştirme |
-| `FreeAiTest` | 9 | Telefondaki model sağlayıcısı (maliyet 0, isteğe göre istem bütçesi, düşünme bloklarının temizlenmesi, hata eşleme), bağlam bütçesine göre kırpma, model hatasında ücretli değil yerel yönteme düşme, kesilen JSON'un kurtarılması, gevşek adlandırılmış soru türleri, BM25 (Türkçe ekler), çıkarımsal cevap, sadakat denetimi (Türkçe ekli adlar dahil), TextRank |
+| `FreeAiTest` | 10 | Telefondaki model sağlayıcısı (maliyet 0, isteğe göre istem bütçesi, düşünme bloklarının temizlenmesi, hata eşleme), bağlam bütçesine göre kırpma, model hatasında ücretli değil yerel yönteme düşme, kesilen JSON'un kurtarılması, gevşek adlandırılmış soru türleri, BM25 (Türkçe ekler), çıkarımsal cevap, sadakat denetimi (Türkçe ekli adlar dahil), TextRank |
 | `LocalModelEvaluationTest` | 1 (isteğe bağlı) | Gerçek `.litertlm` model dosyasıyla eski/TextRank/model karşılaştırması; `BOOKMIND_LITERTLM_MODEL` yoksa atlanır |
 | `AiPipelineTest` | 13 | JSON çıkarma (çit, metin, dize içi parantez, kesik), bozuk çıktı → InvalidOutput, enjeksiyon etiketlerinin etkisizleşmesi, geçersiz/belirsiz soruların ayıklanması, uydurma alıntının silinmesi, puan sıkıştırma, mock ile uçtan uca, önbellek, geçici hatada yeniden deneme, geçersiz JSON'da düzeltici deneme, kalıcı hatada yerel motora düşme, yeniden denenmeyen hatalar, kota/sağlayıcı yokken yerel motor, özet kaynak doğrulaması |
 | `LocalEngineTest` | 12 | Tanım kalıplarından kavramlar (5 bölümün hepsi), "denir" kalıbı, anahtar cümleler, üretilen soruların yapısal geçerliliği ve kendi anahtarıyla doğru cevaplanması, tohum determinizmi, sezgisel puanlama, kaynaklı ve etiketli özetler, özetin kaynağa göre kısalığı (telif), öğretmen akışı, tür tahmini, kitaplar arası bağlar |
