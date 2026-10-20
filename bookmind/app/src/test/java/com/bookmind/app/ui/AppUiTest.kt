@@ -5,6 +5,7 @@ import android.os.Looper
 import org.robolectric.Shadows.shadowOf
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeTestRule
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -114,7 +116,9 @@ class AppUiTest {
         clickTab(R.string.tab_library)
         waitForText("Öğrenmenin Bilimi")
         compose.onAllNodesWithText("Öğrenmenin Bilimi").onFirst().performClick()
-        waitForText(s(R.string.summary_quick))
+        waitForText(s(R.string.summaries))
+        // The summaries sit below the "Next lesson" card: scroll the page to them first.
+        compose.onAllNodes(hasScrollToNodeAction()).onFirst().performScrollToNode(hasText(s(R.string.summary_quick)))
         compose.onNodeWithText(s(R.string.summary_quick)).performClick()
         compose.onNodeWithText(s(R.string.generate)).performClick()
         waitForText("Temel fikir")

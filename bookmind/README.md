@@ -30,6 +30,12 @@ eğrisine göre tekrar ettiren Android uygulaması. Amaç kitapları hızlı tü
   başka bir uygulama, hesap, API anahtarı ya da ücret gerekmez ve kitap metni telefondan çıkmaz. Model inene kadar
   (veya yapay zekâ kapalıyken) klasik yöntemler kullanılır (TextRank, BM25, kurallar). Ücretli bulut yapay zekâ
   varsayılan derlemeden çıkarılmıştır. Ayrıntılar: [docs/FREE_AI.md](docs/FREE_AI.md).
+- **Sonraki ders (Öğren · Pratik yap · Sınav):** her bölüm bir ders. ÖĞREN: akıllı metin (ana fikir, kavramlar,
+  önemli noktalar, alıntılar), iki sesli podcast (telefonun kendi sesleri, ±10 sn, 1×/1,25×/1,5×, canlı transkript),
+  hafıza kartları (3B çevirme, kaydır: biliyorum / tekrar et), bilgi boşlukları. PRATİK YAP: boşluk doldurma +
+  eşleştirme, A–D test, doğru/yanlış, tekrar. SINAV: yazılı deneme (3/5/10 soru, zorluk, soru başına puan + karne)
+  ve sözlü deneme (soru sesli okunur, cevap mikrofona söylenir, kısa ek soru, sözlü puan). Hepsi telefondaki modelle,
+  model yoksa klasik yöntemle çalışır; hatalar tekrar kuyruğuna girer. Ayrıntılar: [docs/STUDY_HUB.md](docs/STUDY_HUB.md).
 - **Kitaba sor ve sesli dinle:** kitapla soru-cevap (BM25 + telefondaki model ya da kitaptan alıntı) ve telefonun
   yerleşik sesli okuması.
 - **Gizlilik:** kitap metni telefonundan çıkmaz; yapay zekâ için tek ağ bağlantısı modelin bir kez indirilmesidir. Hesap isteğe bağlıdır.
@@ -99,8 +105,8 @@ Room şeması değişirse sunucu tablolarını yeniden üret:
 ## Test
 
 ```sh
-./gradlew :core:test                 # 101 birim testi (FSRS, ayrıştırıcılar, AI hattı, yerel modeller, BM25, planlayıcı, senkron istemcisi)
-./gradlew :app:testDebugUnitTest     # 42 test (+4 isteğe bağlı ekran görüntüsü turu): Room/migration, işleme hattı, depolar, senkronizasyon, Compose UI (Robolectric + Hilt)
+./gradlew :core:test                 # 107 birim testi (FSRS, ayrıştırıcılar, AI hattı, ders modülleri, yerel modeller, BM25, planlayıcı, senkron istemcisi)
+./gradlew :app:testDebugUnitTest     # 48 test (+5 isteğe bağlı ekran görüntüsü): Room/migration, işleme hattı, depolar, senkronizasyon, Compose UI (Robolectric + Hilt)
 ./gradlew :app:lintDebug
 bash scripts/test-supabase-sql.sh    # migration'lar + RLS testleri (PostgreSQL 16)
 (cd supabase/functions && deno test --allow-env tests/)   # Edge Function testleri
@@ -127,6 +133,7 @@ Release derlemesi şu an **debug anahtarıyla** imzalanır (yerel denemeler içi
 - [Veri modeli](docs/DATA_MODEL.md)
 - [AI hattı](docs/AI_PIPELINE.md)
 - [Ücretsiz yapay zekâ: envanter, geçiş, değerlendirme](docs/FREE_AI.md)
+- [Sonraki ders: Öğren / Pratik yap / Sınav modülleri](docs/STUDY_HUB.md)
 - [Öğrenme ve aralıklı tekrar](docs/LEARNING_AND_SPACED_REPETITION.md)
 - [Gizlilik ve telif](docs/PRIVACY_AND_COPYRIGHT.md)
 - [Test raporu](docs/TEST_REPORT.md)

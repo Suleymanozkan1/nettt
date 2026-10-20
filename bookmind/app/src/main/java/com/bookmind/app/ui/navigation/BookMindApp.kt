@@ -40,6 +40,11 @@ import com.bookmind.app.R
 import com.bookmind.app.ui.analytics.AnalyticsScreen
 import com.bookmind.app.ui.ask.AskScreen
 import com.bookmind.app.ui.ai.AiScreen
+import com.bookmind.app.data.repo.StudyModule
+import com.bookmind.app.ui.study.OralExamScreen
+import com.bookmind.app.ui.study.StudyHubScreen
+import com.bookmind.app.ui.study.StudyModuleScreen
+import com.bookmind.app.ui.study.WrittenExamScreen
 import com.bookmind.app.ui.book.AddBookScreen
 import com.bookmind.app.ui.book.BookDetailScreen
 import com.bookmind.app.ui.book.ChapterScreen
@@ -164,6 +169,7 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
             onNotes = { nav.navigate(Routes.notes(bookId)) },
             onPlan = { nav.navigate(Routes.plan(bookId)) },
             onAsk = { nav.navigate(Routes.ask(bookId)) },
+            onStudy = { nav.navigate(Routes.study(bookId)) },
             onDeleted = back,
         )
     }
@@ -220,4 +226,23 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
     composable(Routes.NOTIFICATIONS) { NotificationSettingsScreen(onBack = back) }
     composable(Routes.SETTINGS) { SettingsScreen(onNotifications = { nav.navigate(Routes.NOTIFICATIONS) }, onAi = { nav.navigate(Routes.AI) }) }
     composable(Routes.AI) { AiScreen(onBack = back) }
+    composable(Routes.STUDY, listOf(str("bookId"), optional("lesson"))) { entry ->
+        val bookId = entry.arguments!!.getString("bookId")!!
+        StudyHubScreen(
+            onBack = back,
+            onOpenModule = { lesson, module -> nav.navigate(Routes.studyModule(bookId, lesson, module.name)) },
+            onOpenExam = { lesson, module, count, difficulty -> nav.navigate(Routes.studyModule(bookId, lesson, module.name, count, difficulty)) },
+            onReview = { nav.navigate(Routes.review(bookId)) },
+            onOpenAi = { nav.navigate(Routes.AI) },
+        )
+    }
+    composable(Routes.STUDY_MODULE, listOf(str("bookId"), str("lesson"), str("module"), optional("count"), optional("difficulty"))) { entry ->
+        val bookId = entry.arguments!!.getString("bookId")!!
+        val onReview = { nav.navigate(Routes.review(bookId)) }
+        when (StudyModule.valueOf(entry.arguments!!.getString("module")!!)) {
+            StudyModule.WRITTEN_EXAM -> WrittenExamScreen(onBack = back, onReview = onReview)
+            StudyModule.ORAL_EXAM -> OralExamScreen(onBack = back, onReview = onReview)
+            else -> StudyModuleScreen(onBack = back, onReview = onReview)
+        }
+    }
 }

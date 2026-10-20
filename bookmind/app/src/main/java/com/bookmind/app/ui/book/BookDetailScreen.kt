@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.ViewTimeline
@@ -58,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -69,14 +71,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.bookmind.app.R
+import com.bookmind.app.data.settings.AppLanguage
 import com.bookmind.app.data.db.ProcessingStatus
 import com.bookmind.app.data.files.ImportException
 import com.bookmind.app.data.repo.LibraryRepository
+import com.bookmind.app.data.repo.StudyHubRepository
 import com.bookmind.app.data.repo.StudyRepository
 import com.bookmind.app.ui.components.AppCard
 import com.bookmind.app.ui.components.BackTopBar
 import com.bookmind.app.ui.components.BookCover
 import com.bookmind.app.ui.components.EmptyState
+import com.bookmind.app.ui.components.HeroButton
+import com.bookmind.app.ui.components.HeroCard
 import com.bookmind.app.ui.components.Gutter
 import com.bookmind.app.ui.components.IconBadge
 import com.bookmind.app.ui.components.LoadingState
@@ -92,7 +98,9 @@ import com.bookmind.app.util.AppJson
 import com.bookmind.core.ai.BookAnalysis
 import com.bookmind.core.ai.SummaryType
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -102,13 +110,25 @@ class BookDetailViewModel @Inject constructor(
     handle: SavedStateHandle,
     private val library: LibraryRepository,
     study: StudyRepository,
+    private val hub: StudyHubRepository,
 ) : ViewModel() {
     val bookId: String = handle["bookId"]!!
     val book = library.book(bookId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val chapters = library.chapters(bookId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val concepts = study.concepts(bookId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    init { viewModelScope.launch { library.opened(bookId) } }
+    /** The lesson the study hub would open next, with how many lessons there are. */
+    val nextLesson = MutableStateFlow<Pair<StudyHubRepository.LessonInfo, Int>?>(null)
+
+    init {
+        viewModelScope.launch { library.opened(bookId) }
+        viewModelScope.launch {
+            combine(hub.version, chapters) { _, ch -> ch.size }.collect {
+                val lessons = hub.lessons(bookId)
+                nextLesson.value = hub.nextLesson(lessons)?.let { it to lessons.size }
+            }
+        }
+    }
     fun retry(ocr: Boolean = false) = library.retry(bookId, ocr)
     fun delete(onDone: () -> Unit) = viewModelScope.launch { library.delete(bookId); onDone() }
     fun rename(title: String, author: String) = viewModelScope.launch { library.updateMetadata(bookId, title, author) }
@@ -127,12 +147,14 @@ fun BookDetailScreen(
     onNotes: () -> Unit,
     onPlan: () -> Unit,
     onAsk: () -> Unit,
+    onStudy: () -> Unit,
     onDeleted: () -> Unit,
     vm: BookDetailViewModel = hiltViewModel(),
 ) {
     val book by vm.book.collectAsStateWithLifecycle()
     val chapters by vm.chapters.collectAsStateWithLifecycle()
     val concepts by vm.concepts.collectAsStateWithLifecycle()
+    val next by vm.nextLesson.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var confirmDelete by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
@@ -176,7 +198,8 @@ fun BookDetailScreen(
             }
             if (usable) {
                 item {
-                    Row(Modifier.fillMaxWidth().padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    next?.let { (lesson, total) -> NextLessonCard(lesson, total, onStudy) }
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         PrimaryButton(stringResource(R.string.review), onReview, Modifier.weight(1f), icon = Icons.Filled.Style)
                         SecondaryButton(stringResource(R.string.quiz), onQuiz, Modifier.weight(1f), icon = Icons.Filled.Quiz)
                     }
@@ -274,6 +297,22 @@ fun BookDetailScreen(
             confirmButton = { TextButton({ editing = false; vm.rename(title, author) }) { Text(stringResource(R.string.save)) } },
             dismissButton = { TextButton({ editing = false }) { Text(stringResource(R.string.cancel)) } },
         )
+    }
+}
+
+/** Entry to the study hub: the next lesson with its Learn / Practice / Exam modules. */
+@Composable
+private fun NextLessonCard(lesson: StudyHubRepository.LessonInfo, total: Int, onStudy: () -> Unit) {
+    HeroCard(Modifier.fillMaxWidth().padding(top = 20.dp).clickable(onClick = onStudy).testTag("next_lesson")) {
+        Column(Modifier.padding(18.dp)) {
+            Text(stringResource(R.string.study_next_lesson).uppercase(AppLanguage.locale), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f))
+            Text(lesson.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp))
+            Text(stringResource(R.string.study_lesson_of, lesson.index + 1, total) + " · " + stringResource(R.string.study_entry_body),
+                style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(top = 4.dp))
+            HeroButton(stringResource(if (lesson.done.isEmpty()) R.string.study_start else R.string.study_continue), onStudy, Modifier.padding(top = 14.dp),
+                icon = Icons.Filled.School)
+        }
     }
 }
 

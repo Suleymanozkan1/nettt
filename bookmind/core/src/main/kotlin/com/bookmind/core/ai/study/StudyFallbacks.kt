@@ -167,7 +167,7 @@ class StudyFallbacks(private val engine: LocalHeuristicEngine = LocalHeuristicEn
         val drafts = engine.quiz(pool, chapters(lesson), pool.size, setOf(QuestionType.MULTIPLE_CHOICE), seed = lesson.index + 1, lang = lang)
         return McqSet(drafts.filter { it.conceptTitle in ownTitles }.mapNotNull { d ->
             val idx = d.options.indexOfFirst { it == d.answer }
-            if (d.options.size < 2 || idx < 0) null else McqQuestion(d.prompt, d.options, idx, d.explanation)
+            if (d.options.size < 2 || idx < 0) null else McqQuestion(d.prompt, d.options.map { o -> o.replaceFirstChar { it.uppercase() } }, idx, d.explanation)
         }.take(count))
     }
 
@@ -198,7 +198,27 @@ class StudyFallbacks(private val engine: LocalHeuristicEngine = LocalHeuristicEn
 
     fun gradeWritten(question: ExamQuestion, answer: String, lang: String?): WrittenGrade {
         val g = engine.grade(question.idealAnswer, question.keyPoints, answer, lang = lang)
-        return WrittenGrade((g.score * 100).coerceIn(0.0, 100.0), g.missingPoints, g.feedback, question.idealAnswer)
+        val phrases = g.missingPoints.map { phraseAround(question.idealAnswer, it) }.distinct()
+        // Neighbouring keywords give overlapping phrases; keep each idea once.
+        val missing = mutableListOf<String>()
+        phrases.forEach { p ->
+            val words = p.lowercase().split(' ').toSet()
+            if (missing.none { m -> m.lowercase().split(' ').count { it in words } * 2 >= minOf(words.size, m.split(' ').size) }) missing += p
+        }
+        return WrittenGrade((g.score * 100).coerceIn(0.0, 100.0), missing.take(3), g.feedback, question.idealAnswer)
+    }
+
+    private val joiners = setOf("ve", "ile", "veya", "ya", "da", "de", "ama", "ancak", "and", "or", "but", "with", "the", "a", "an", "of", "to")
+
+    /** A few words of [text] around [keyword], so a missing point reads as an idea rather than a lone word. */
+    internal fun phraseAround(text: String, keyword: String, radius: Int = 3): String {
+        val sentence = Sentences.split(text).map { it.text }.firstOrNull { it.contains(keyword, ignoreCase = true) } ?: return keyword
+        val words = sentence.split(Regex("\\s+"))
+        val i = words.indexOfFirst { it.contains(keyword, ignoreCase = true) }.takeIf { it >= 0 } ?: return keyword
+        val window = words.subList((i - radius).coerceAtLeast(0), (i + radius + 1).coerceAtMost(words.size))
+        // Do not start or end on a conjunction ("… kurulması ve").
+        val joiner = { w: String -> w.trim { c -> !c.isLetterOrDigit() }.lowercase() in joiners }
+        return window.dropWhile(joiner).dropLastWhile(joiner).joinToString(" ").trim { !it.isLetterOrDigit() }.ifBlank { keyword }
     }
 
     fun oralTurn(question: ExamQuestion, answer: String, alreadyFollowedUp: Boolean, lang: String?): OralTurn {
@@ -210,7 +230,7 @@ class StudyFallbacks(private val engine: LocalHeuristicEngine = LocalHeuristicEn
             score >= 35 -> t.oralPartial
             else -> t.oralMissed
         }
-        val follow = if (!alreadyFollowedUp && score < 70) g.missingPoints.firstOrNull()?.let { t.oralFollowUp(it) } else null
+        val follow = if (!alreadyFollowedUp && score < 70) g.missingPoints.firstOrNull()?.let { t.oralFollowUp(phraseAround(question.idealAnswer, it)) } else null
         return OralTurn(score, feedback, follow)
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.bookmind.app.MainActivity
@@ -106,6 +108,7 @@ class ScreenshotTour {
             click(s(R.string.tab_library)); waitFor(title); pause(500); shot("${prefix}04_library")
             compose.onAllNodesWithText(title, substring = true).onFirst().performClick()
             waitFor(s(R.string.summaries)); pause(500); shot("${prefix}05_book")
+            compose.onAllNodes(hasScrollToNodeAction()).onFirst().performScrollToNode(hasText(s(R.string.summary_quick)))
             click(s(R.string.summary_quick)); pause(500); shot("${prefix}06a_summary_empty")
             click(s(R.string.generate)); waitFor(s(R.string.origin_local)); pause(500); shot("${prefix}06_summary")
             back(it)

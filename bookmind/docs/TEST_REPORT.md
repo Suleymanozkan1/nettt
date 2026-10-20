@@ -1,22 +1,22 @@
 # Test raporu
 
-Tarih: 2026-10-19. Ortam: Linux, JDK 21, Android SDK 36, Robolectric 4.16 (API 35/32), PostgreSQL 16.15,
+Tarih: 2026-10-20. Ortam: Linux, JDK 21, Android SDK 36, Robolectric 4.16 (API 35/32), PostgreSQL 16.15,
 Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) her push'ta çalışır.
 
 ## Özet
 
 | Paket | Komut | Test | Sonuç |
 |---|---|---|---|
-| Core birim testleri | `./gradlew :core:test` | 101 (+1 isteğe bağlı) | ✅ 101/101 |
-| Uygulama (Robolectric: Room, hat, depolar, senkron, Compose UI) | `./gradlew :app:testDebugUnitTest` | 42 (+4 isteğe bağlı) | ✅ 42/42 |
+| Core birim testleri | `./gradlew :core:test` | 107 (+1 isteğe bağlı) | ✅ 107/107 |
+| Uygulama (Robolectric: Room, hat, depolar, senkron, Compose UI) | `./gradlew :app:testDebugUnitTest` | 48 (+5 isteğe bağlı) | ✅ 48/48 |
 | SQL migration + RLS | `bash scripts/test-supabase-sql.sh` | 9 senaryo grubu | ✅ |
 | Edge Functions | `deno test --allow-env tests/` (+ `deno check`) | 8 | ✅ 8/8 |
-| Android lint | `./gradlew :app:lintDebug` | — | ✅ 0 hata, 44 uyarı (aşağıda) |
+| Android lint | `./gradlew :app:lintDebug` | — | ✅ 0 hata, 57 uyarı (aşağıda) |
 | Derleme | `assembleDebug`, `assembleRelease` (R8, işlemci türü başına APK + evrensel) | — | ✅ arm64 release 45 MB, evrensel 102 MB |
 | Telefondaki gerçek model | `LocalModelEvaluationTest` (LiteRT-LM + Gemma 4 E2B `.litertlm`) | 2 kitap | ✅ bkz. [FREE_AI.md](FREE_AI.md#4-değerlendirme) |
 | Emülatörde release APK duman testi | `scripts/android-smoke.sh` (CI, API 34) | 1 akış | bkz. "Cihaz testi" |
 
-## Birim testleri (core, 101)
+## Birim testleri (core, 107)
 
 | Sınıf | Adet | Kapsam |
 |---|---|---|
@@ -32,9 +32,10 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | `RemoteAiProviderTest` | 4 | Oturum jetonu gönderimi (sağlayıcı anahtarı yok), kullanım ayrıştırma, 429/401/5xx/HTML eşlemesi, ağ hatasının yeniden denenebilirliği, oturumsuz istek yapılmaması |
 | `QuizScorerTest` | 5 | Çoktan seçmeli/DY, yazımda aksan-ek-yazım hatası toleransı, sayısal karşılaştırma, sıralama/eşleştirmede kısmi puan |
 | `LearningTest` | 8 | Günlük hedef (yerel gün, gece yarısını geçen ve açık unutulan oturum), seri koruması, kaliteye dayalı XP/seviye/rozet, plan bütçesi + ön koşul sırası + kontrol noktası, kaçırılan günlerin kaydırılması ve uyarlama, hatırlatma (yerel saat, gün seçimi, tatil, akşam), yaz saati boşluğu ve saat dilimi değişimi, analitikte tanıma/hatırlama ayrımı ve az veri |
+| `StudyAiTest` | 6 | "Sonraki ders" modülleri: modelsiz (klasik yöntem) akıllı not, iki sesli podcast (A/B sırayla), hafıza kartları, ön bilgi ve hata kaynaklı bilgi boşlukları, boşluk doldurma (cevap seçeneklerde), A–D test, D/Y, yazılı sınav + iyi/kötü/boş cevap puanlaması, sözlü sınavda tek ek soru; dağınık model çıktısının kurtarılması (çitli çıplak dizi, "Sunucu/Uzman" → A/B, "C"/seçenek metni → indeks, "Doğru/Yanlış" → boolean); bozuk çıktıda uyarılı klasik yöntem; 1024 bağlamda istemin %60'ı aşmaması ve TextRank paketleme; JsonSanitizer (BOM, çit, sondaki virgüller, dize içi parantez, kesik dizi) |
 | `SyncTest` | 7 | Supabase giriş/kayıt, upsert başlıkları, değişen satır sorgusu, HTTP hataları, LWW ve tombstone, tekrar durumu birleştirme |
 
-## Uygulama testleri (Robolectric, 42)
+## Uygulama testleri (Robolectric, 48)
 
 | Sınıf | Adet | Kapsam |
 |---|---|---|
@@ -44,6 +45,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | `SyncEngineTest` | 5 | Push: `user_id` gönderilmemesi, JSON boolean, dosya yükleme, FK sırası; pull: LWW (yeni uzak kazanır, eski uzak yerel düzenlemeyi ezmez), yerel profile sahiplik, **çekilen satırların geri gönderilmemesi**, sunucu zamanlı imleç + örtüşme; tetikleyicilerin tüm yazma yollarını (kademeli silme dahil) yakalaması; giriş anlık görüntüsünün FK sırası; hesapsız senkron yok |
 | `ModelDownloadTest` | 5 | Model indirme: ilerleme + SHA-256, kaldığı yerden devam (Range), aralığı yok sayan sunucu, hata durumunda kısmi dosyanın korunması, bozuk dosya; katalog lisansı, sabit sürüm ve RAM'e göre öneri |
 | `AppUiTest` (Hilt + Compose) | 8 | Yapay zekâ asistanı (ana ekran kartı, Profil, model listesi, bellek uyarısı); "Kitaba sor": çevrimdışı, kaynaklı cevap; Onboarding → Bugün (hedef, hatırlatma, demo kitap), kütüphane → kitap → hızlı özet (yerel köken etiketi), günlük tekrar (cevabı göster → derecelendir → ilerleme + kayıt), quiz oluşturma ve başlatma, bildirim ayarının kaydı, boş kütüphane durumu ve elle giriş doğrulaması |
+| `StudyHubUiTest` (Hilt + Compose) | 6 (+1 isteğe bağlı) | Kitap → "Sonraki ders" kartı → ÖĞREN / PRATİK YAP / SINAV sekmeleri ve kart ızgarası ("ÖNERİLEN" rozeti); hafıza kartı çevirme ve "Tekrar et" ile tekrar kuyruğuna ekleme; akıllı metin, podcast transkripti, bilgi boşlukları; A–D testin bitirilmesi ve dersin tamamlanması, D/Y anında açıklama, alıştırma; yazılı sınav ayarı → cevap → tek tek puanlama → karne (zayıf cevaplar kuyruğa); konuşma tanıma olmayan telefonda yazarak sözlü sınav → sözlü puan; podcast zaman çizelgesinde kelime/satır atlama |
 
 ## SQL / RLS testleri (`supabase/tests/rls_test.sql`)
 
@@ -90,9 +92,9 @@ denetimi. Bu oturumun ortamında KVM olmadığından emülatör yerelde çalış
 - Betik hatası düzeltildi: "Start" metni önce "Start with a sample book" onay kutusunu eşliyordu; artık tam eşleşme
   öncelikli.
 
-## Lint uyarıları (44)
+## Lint uyarıları (57)
 
-- 40 × `PluralsCandidate`: sayı içeren İngilizce metinler (ör. "1 chapters"). Türkçede çoğul eki gerekmediği için
+- 53 × `PluralsCandidate`: sayı içeren İngilizce metinler (ör. "1 chapters"). Türkçede çoğul eki gerekmediği için
   işlev bozmaz; İngilizce için `plurals`'a çevrilmeli (kalan iş).
 - 3 × `TrustAllX509TrustManager`: PdfBox-Android'in geçişli BouncyCastle jar'ı içinde; uygulamanın ağ yığını
   (OkHttp, platform güven deposu) bu sınıfı kullanmaz.

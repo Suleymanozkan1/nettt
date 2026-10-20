@@ -25,6 +25,8 @@ object Routes {
     const val NOTIFICATIONS = "notifications"
     const val SETTINGS = "settings"
     const val AI = "ai"
+    const val STUDY = "study/{bookId}?lesson={lesson}"
+    const val STUDY_MODULE = "study/{bookId}/{lesson}/{module}?count={count}&difficulty={difficulty}"
 
     fun book(id: String) = "book/$id"
     fun chapter(id: String) = "chapter/${Uri.encode(id)}"
@@ -41,4 +43,7 @@ object Routes {
             (highlight?.let { "&highlight=${Uri.encode(it.take(1_500))}" } ?: "")
     fun plan(bookId: String) = "plan/$bookId"
     fun ask(bookId: String) = "ask/$bookId"
+    fun study(bookId: String, lesson: Int? = null) = "study/$bookId" + (lesson?.let { "?lesson=$it" } ?: "")
+    fun studyModule(bookId: String, lesson: Int, module: String, count: Int? = null, difficulty: Int? = null) =
+        "study/$bookId/$lesson/$module" + listOfNotNull(count?.let { "count=$it" }, difficulty?.let { "difficulty=$it" }).joinToString("&").let { if (it.isEmpty()) "" else "?$it" }
 }

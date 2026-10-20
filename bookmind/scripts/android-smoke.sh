@@ -97,10 +97,33 @@ dump
 if grep -qE 'text="[^"]*(Temel fikir|Hızlı özet|Öne çıkan)' "$OUT/ui.xml"; then echo "FAIL: Turkish text on an English screen"; exit 1; fi
 adb exec-out screencap -p > "$OUT/03-summary.png"
 
+echo "== next lesson hub: Learn / Practise / Exam (classic methods, no model yet)"
+adb shell input keyevent KEYCODE_BACK; sleep 1
+scroll_tap_text "Start the lesson"
+wait_text "LEARN" 60
+adb exec-out screencap -p > "$OUT/03b-study-hub.png"
+scroll_tap_text "Flashcards"
+wait_text "Card 1 /" 90
+adb exec-out screencap -p > "$OUT/03c-flashcards.png"
+tap_text "Again"
+wait_text "Card 2 /" 30
+adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "PRACTISE"
+scroll_tap_text "True / False"
+tap_text "True" 90
+wait_text "Next" 30
+adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "EXAM"
+scroll_tap_text "Set up written exam"
+tap_text "Start"
+wait_text "Submit the exam" 120
+adb exec-out screencap -p > "$OUT/03d-written-exam.png"
+adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
+
 if [ "${AI_SMOKE:-0}" = 1 ]; then
   echo "== on-device AI: download the light model inside the app (real Hugging Face download, SHA-256 check)"
   # The emulator has ~4 GB RAM, so the app recommends the light model (Qwen3 0.6B, 614 MB).
-  adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
+  adb shell input keyevent KEYCODE_BACK; sleep 1
   tap_text "Profile"
   scroll_tap_text "AI assistant"
   wait_text "Qwen3 0.6B" 30
@@ -133,6 +156,22 @@ if [ "${AI_SMOKE:-0}" = 1 ]; then
     grep -q "No AI response" "$OUT/ui.xml" && echo "FAIL: the model failed and the classic method answered"
     echo "FAIL: the answer did not come from the on-device model"; exit 1
   fi
+
+  echo "== next lesson with the model: flashcards written by the on-device model (or a labelled classic fallback)"
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+  scroll_tap_text "the lesson"
+  wait_text "LEARN" 60
+  scroll_tap_text "Flashcards"
+  study=""; deadline=$((SECONDS + 600))
+  while [ $SECONDS -lt $deadline ]; do
+    if [ -n "$(find_text "AI · Qwen3 0.6B")" ]; then study=ai; break; fi
+    if [ -n "$(find_text "classic method was used")" ]; then study=fallback; break; fi
+    sleep 3
+  done
+  adb exec-out screencap -p > "$OUT/07-study-ai.png"
+  echo "study flashcards source: ${study:-none}" | tee "$OUT/study-ai.txt"
+  [ -n "$study" ] || { echo "FAIL: flashcards did not load"; exit 1; }
+  wait_text "Card 1 /" 30
 fi
 
 echo "== crash check"
