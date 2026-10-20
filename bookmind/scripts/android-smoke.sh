@@ -116,7 +116,8 @@ adb shell input keyevent KEYCODE_BACK; sleep 1
 tap_text "EXAM"
 scroll_tap_text "Set up written exam"
 tap_text "Start"
-wait_text "Submit the exam" 120
+# The submit button sits below the questions on the small emulator screen; the first question is enough here.
+wait_text "Question 1" 120
 adb exec-out screencap -p > "$OUT/03d-written-exam.png"
 adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
 

@@ -49,10 +49,18 @@ object ContextPacker {
  */
 class StudyFallbacks(private val engine: LocalHeuristicEngine = LocalHeuristicEngine()) {
 
-    private fun concepts(lesson: Lesson, max: Int): List<ConceptInput> =
-        lesson.concepts.ifEmpty {
+    /**
+     * The lesson's own concepts, topped up with concepts from other chapters that this lesson also talks about, and
+     * finally with concepts extracted from the text, so short chapters still give enough cards and questions.
+     */
+    private fun concepts(lesson: Lesson, max: Int): List<ConceptInput> {
+        val own = lesson.concepts.ifEmpty {
             engine.extractConcepts(lesson.text, max).map { ConceptInput(it.title, it.explanation, lesson.index, it.quote) }
-        }.take(max)
+        }
+        if (own.size >= max) return own.take(max)
+        val mentioned = lesson.bookConcepts.filter { it.chapterIndex != lesson.index && engine.containsTerm(lesson.text, it.title) }
+        return (own + mentioned).distinctBy { it.title.lowercase() }.take(max)
+    }
 
     private fun shortSentence(s: String, max: Int = 220) = if (s.length <= max) s else s.take(max - 1).substringBeforeLast(' ') + "…"
 
