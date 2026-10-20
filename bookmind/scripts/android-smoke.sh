@@ -173,6 +173,9 @@ if [ "${AI_SMOKE:-0}" = 1 ]; then
   echo "study flashcards source: ${study:-none}" | tee "$OUT/study-ai.txt"
   [ -n "$study" ] || { echo "FAIL: flashcards did not load"; exit 1; }
   wait_text "Card 1 /" 30
+  # Small models sometimes copy the instructions onto a card; those must be filtered out.
+  dump
+  if grep -q 'flashcards for the most important' "$OUT/ui.xml"; then echo "FAIL: a flashcard repeats the prompt"; exit 1; fi
 fi
 
 echo "== crash check"

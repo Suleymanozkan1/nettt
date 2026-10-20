@@ -7,7 +7,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 
 | Paket | Komut | Test | Sonuç |
 |---|---|---|---|
-| Core birim testleri | `./gradlew :core:test` | 107 (+1 isteğe bağlı) | ✅ 107/107 |
+| Core birim testleri | `./gradlew :core:test` | 108 (+1 isteğe bağlı) | ✅ 108/108 |
 | Uygulama (Robolectric: Room, hat, depolar, senkron, Compose UI) | `./gradlew :app:testDebugUnitTest` | 48 (+5 isteğe bağlı) | ✅ 48/48 |
 | SQL migration + RLS | `bash scripts/test-supabase-sql.sh` | 9 senaryo grubu | ✅ |
 | Edge Functions | `deno test --allow-env tests/` (+ `deno check`) | 8 | ✅ 8/8 |
@@ -16,7 +16,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | Telefondaki gerçek model | `LocalModelEvaluationTest` (LiteRT-LM + Gemma 4 E2B `.litertlm`) | 2 kitap | ✅ bkz. [FREE_AI.md](FREE_AI.md#4-değerlendirme) |
 | Emülatörde release APK duman testi | `scripts/android-smoke.sh` (CI, API 34) | 1 akış | bkz. "Cihaz testi" |
 
-## Birim testleri (core, 107)
+## Birim testleri (core, 108)
 
 | Sınıf | Adet | Kapsam |
 |---|---|---|
@@ -32,7 +32,7 @@ Deno 2.9.6. Aynı paketler GitHub Actions'ta (`.github/workflows/bookmind.yml`) 
 | `RemoteAiProviderTest` | 4 | Oturum jetonu gönderimi (sağlayıcı anahtarı yok), kullanım ayrıştırma, 429/401/5xx/HTML eşlemesi, ağ hatasının yeniden denenebilirliği, oturumsuz istek yapılmaması |
 | `QuizScorerTest` | 5 | Çoktan seçmeli/DY, yazımda aksan-ek-yazım hatası toleransı, sayısal karşılaştırma, sıralama/eşleştirmede kısmi puan |
 | `LearningTest` | 8 | Günlük hedef (yerel gün, gece yarısını geçen ve açık unutulan oturum), seri koruması, kaliteye dayalı XP/seviye/rozet, plan bütçesi + ön koşul sırası + kontrol noktası, kaçırılan günlerin kaydırılması ve uyarlama, hatırlatma (yerel saat, gün seçimi, tatil, akşam), yaz saati boşluğu ve saat dilimi değişimi, analitikte tanıma/hatırlama ayrımı ve az veri |
-| `StudyAiTest` | 6 | "Sonraki ders" modülleri: modelsiz (klasik yöntem) akıllı not, iki sesli podcast (A/B sırayla), hafıza kartları, ön bilgi ve hata kaynaklı bilgi boşlukları, boşluk doldurma (cevap seçeneklerde), A–D test, D/Y, yazılı sınav + iyi/kötü/boş cevap puanlaması, sözlü sınavda tek ek soru; dağınık model çıktısının kurtarılması (çitli çıplak dizi, "Sunucu/Uzman" → A/B, "C"/seçenek metni → indeks, "Doğru/Yanlış" → boolean); bozuk çıktıda uyarılı klasik yöntem; 1024 bağlamda istemin %60'ı aşmaması ve TextRank paketleme; JsonSanitizer (BOM, çit, sondaki virgüller, dize içi parantez, kesik dizi) |
+| `StudyAiTest` | 7 | "Sonraki ders" modülleri: modelsiz (klasik yöntem) akıllı not, iki sesli podcast (A/B sırayla), hafıza kartları, ön bilgi ve hata kaynaklı bilgi boşlukları, boşluk doldurma (cevap seçeneklerde), A–D test, D/Y, yazılı sınav + iyi/kötü/boş cevap puanlaması, sözlü sınavda tek ek soru; dağınık model çıktısının kurtarılması (çitli çıplak dizi, "Sunucu/Uzman" → A/B, "C"/seçenek metni → indeks, "Doğru/Yanlış" → boolean); bozuk çıktıda uyarılı klasik yöntem; 1024 bağlamda istemin %60'ı aşmaması ve TextRank paketleme; JsonSanitizer (BOM, çit, sondaki virgüller, dize içi parantez, kesik dizi) |
 | `SyncTest` | 7 | Supabase giriş/kayıt, upsert başlıkları, değişen satır sorgusu, HTTP hataları, LWW ve tombstone, tekrar durumu birleştirme |
 
 ## Uygulama testleri (Robolectric, 48)

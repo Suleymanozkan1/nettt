@@ -32,6 +32,9 @@ Kitabın her bölümü bir **ders**tir. Kitap sayfasındaki "Sonraki ders" kart�
   diziyi beklenen nesneye sarar (`[…]` → `{"cards":[…]}`), kesilen çıktıyı kapatır. Küçük modellerin farklı yazımları
   kabul edilir: `"answer":"C"` / `"2"` / seçenek metni → indeks; `"isTrue":"Doğru"` → `true`; konuşmacı adları
   ("Sunucu", "Uzman") → A/B.
+- **Talimat tekrarı:** küçük modeller bazen talimatı cevaba kopyalar (emülatörde Qwen3 0.6B bir karta "Create 8
+  flashcards…" yazdı). Talimatlardan art arda 5 kelime tekrarlayan ya da hiç kelime içermeyen her öğe atılır; geriye
+  yeterli öğe kalmazsa düzeltici deneme ve ardından klasik yöntem devreye girer.
 - **Doğrulama ve yedek:** çıktı doğrulanır (ör. podcast ≥4 satır, test seçenekleri tekil ve cevap indeksi geçerli,
   alıntılar kitapta geçmeli). Geçersizse bir düzeltici deneme yapılır; yine olmazsa ya da model yoksa aynı modül
   **klasik yöntemle** (TextRank, kavram çıkarma, kural tabanlı soru üretici ve puanlayıcı) üretilir ve ekranda

@@ -44,8 +44,14 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun smartNotes(lesson: Lesson, lang: String?): AiResult<SmartNotes> {
         val local = fallbacks.notes(lesson)
         val request = payload(prompt(lesson) { LearningPrompts.smartNotes(lesson.title, it, lang) }, SmartNotes.serializer(), local)
-        return ai.run(request, SmartNotes.serializer(), { n ->
-            if (n.mainIdea.isBlank() && n.keyPoints.isEmpty()) invalid("empty notes")
+        val echo = EchoGuard(request)
+        return ai.run(request, SmartNotes.serializer(), { raw ->
+            val n = raw.copy(
+                keyPoints = raw.keyPoints.filterNot(echo::echoes), quotes = raw.quotes.filterNot(echo::echoes),
+                concepts = raw.concepts.filterNot { echo.echoes(it.term) || echo.echoes(it.explanation) },
+                takeaway = raw.takeaway.takeUnless(echo::echoes).orEmpty(),
+            )
+            if (echo.echoes(n.mainIdea) || n.keyPoints.isEmpty()) invalid("empty notes")
             val warnings = mutableListOf<String>()
             val quotes = n.quotes.filter { q -> OutputValidator.quoteOccursIn(q, lesson.text).also { if (!it) warnings += CoreText.of(lang).quoteUnverified } }
             val generated = listOf(n.mainIdea, n.takeaway) + n.keyPoints + n.concepts.map { it.explanation }
@@ -57,7 +63,9 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun podcast(lesson: Lesson, lang: String?): AiResult<PodcastScript> {
         val local = fallbacks.podcast(lesson, lang)
         val request = payload(prompt(lesson) { LearningPrompts.podcast(lesson.title, it, lang) }, PodcastScript.serializer(), local)
-        return ai.run(request, PodcastScript.serializer(), { p ->
+        val echo = EchoGuard(request)
+        return ai.run(request, PodcastScript.serializer(), { raw ->
+            val p = raw.copy(lines = raw.lines.filterNot { echo.echoes(it.text) })
             // Speaker names vary ("Sunucu", "Host", "Uzman"…): the first voice becomes A, any other B.
             val first = p.lines.firstOrNull()?.speaker
             val lines = p.lines.filter { it.text.isNotBlank() }.map { it.copy(speaker = if (it.speaker == first || it.speaker.equals("A", true)) "A" else "B", text = it.text.trim()) }
@@ -69,8 +77,9 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun flashcards(lesson: Lesson, count: Int, lang: String?): AiResult<FlashcardDeck> {
         val local = fallbacks.flashcards(lesson, count, lang)
         val request = payload(prompt(lesson) { LearningPrompts.flashcards(lesson.title, it, count, lang) }, FlashcardDeck.serializer(), local)
+        val echo = EchoGuard(request)
         return ai.run(request, FlashcardDeck.serializer(), { d ->
-            val cards = d.cards.filter { it.front.isNotBlank() && it.back.isNotBlank() }.distinctBy { it.front.lowercase() }
+            val cards = d.cards.filter { !echo.echoes(it.front) && !echo.echoes(it.back) }.distinctBy { it.front.lowercase() }
             if (cards.size < minOf(3, count)) invalid("too few cards")
             OutputValidator.Validated(FlashcardDeck(cards.take(count)), emptyList())
         }, { local }, lang = lang, arrayKey = "cards")
@@ -79,18 +88,21 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun prerequisiteGaps(lesson: Lesson, lang: String?): AiResult<GapDeck> {
         val local = fallbacks.prerequisiteGaps(lesson, lang)
         val request = payload(prompt(lesson) { LearningPrompts.prerequisiteGaps(lesson.title, it, lang) }, GapDeck.serializer(), local)
-        return ai.run(request, GapDeck.serializer(), ::validGaps, { local }, lang = lang, arrayKey = "gaps")
+        val echo = EchoGuard(request)
+        return ai.run(request, GapDeck.serializer(), { validGaps(it, echo) }, { local }, lang = lang, arrayKey = "gaps")
     }
 
     /** Gap cards for the learner's own mistakes; not cached, mistakes change all the time. */
     suspend fun gapsFromMistakes(lesson: Lesson, mistakes: List<Mistake>, lang: String?): AiResult<GapDeck> {
         val local = fallbacks.gapsFromMistakes(lesson, mistakes, lang)
         val request = payload(prompt(lesson) { LearningPrompts.gapsFromMistakes(lesson.title, it, mistakes, lang) }, GapDeck.serializer(), local)
-        return ai.runUncached(request, GapDeck.serializer(), ::validGaps, lang, arrayKey = "gaps") { local }
+        // The learner's mistakes are part of the prompt and may be quoted; only the template counts as an echo.
+        val echo = EchoGuard(LearningPrompts.gapsFromMistakes(lesson.title, "", emptyList(), lang))
+        return ai.runUncached(request, GapDeck.serializer(), { validGaps(it, echo) }, lang, arrayKey = "gaps") { local }
     }
 
-    private fun validGaps(d: GapDeck): OutputValidator.Validated<GapDeck> {
-        val gaps = d.gaps.filter { it.topic.isNotBlank() && it.explanation.isNotBlank() }
+    private fun validGaps(d: GapDeck, echo: EchoGuard): OutputValidator.Validated<GapDeck> {
+        val gaps = d.gaps.filter { !echo.echoes(it.topic) && !echo.echoes(it.explanation) }
         if (gaps.isEmpty()) invalid("no gaps")
         return OutputValidator.Validated(GapDeck(gaps.take(6)), emptyList())
     }
@@ -100,9 +112,10 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun exercises(lesson: Lesson, lang: String?): AiResult<ExerciseSet> {
         val local = fallbacks.exercises(lesson, lang)
         val request = payload(prompt(lesson) { LearningPrompts.exercises(lesson.title, it, lang) }, ExerciseSet.serializer(), local)
+        val echo = EchoGuard(request)
         return ai.run(request, ExerciseSet.serializer(), { e ->
             val cloze = e.cloze.mapNotNull { c ->
-                if (c.answer.isBlank()) return@mapNotNull null
+                if (c.answer.isBlank() || echo.echoes(c.sentence)) return@mapNotNull null
                 // Accept a sentence that still contains the answer: blank it out ourselves.
                 val sentence = when {
                     "___" in c.sentence -> c.sentence.replace(Regex("_{3,}"), "_____")
@@ -112,7 +125,7 @@ class StudyAi(private val ai: LearningAi) {
                 val options = (c.options.filter { it.isNotBlank() } + c.answer).distinctBy { it.lowercase() }.let { if (it.size >= 2) it.shuffled(java.util.Random(sentence.hashCode().toLong())) else emptyList() }
                 ClozeItem(sentence, c.answer.trim(), options)
             }
-            val matching = e.matching.filter { it.term.isNotBlank() && it.definition.isNotBlank() }.distinctBy { it.term.lowercase() }
+            val matching = e.matching.filter { !echo.echoes(it.term) && !echo.echoes(it.definition) }.distinctBy { it.term.lowercase() }
             if (cloze.isEmpty() && matching.size < 2) invalid("no exercises")
             OutputValidator.Validated(ExerciseSet(cloze.take(5), if (matching.size >= 2) matching.take(5) else emptyList()), emptyList())
         }, { local }, lang = lang)
@@ -121,10 +134,11 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun multipleChoice(lesson: Lesson, count: Int, lang: String?): AiResult<McqSet> {
         val local = fallbacks.multipleChoice(lesson, count, lang)
         val request = payload(prompt(lesson) { LearningPrompts.multipleChoice(lesson.title, it, count, lang) }, McqSet.serializer(), local)
+        val echo = EchoGuard(request)
         return ai.run(request, LenientMcq, { m ->
             val qs = m.questions.mapNotNull { q ->
                 val options = q.options.map { it.trim() }.filter { it.isNotBlank() }
-                if (q.question.isBlank() || options.size < 2 || options.distinctBy { it.lowercase() }.size != options.size || q.answer !in options.indices) null
+                if (echo.echoes(q.question) || options.any(echo::echoes) || options.size < 2 || options.distinctBy { it.lowercase() }.size != options.size || q.answer !in options.indices) null
                 else q.copy(options = options)
             }
             if (qs.isEmpty()) invalid("no valid questions")
@@ -135,8 +149,9 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun trueFalse(lesson: Lesson, count: Int, lang: String?): AiResult<TrueFalseSet> {
         val local = fallbacks.trueFalse(lesson, count, lang)
         val request = payload(prompt(lesson) { LearningPrompts.trueFalse(lesson.title, it, count, lang) }, TrueFalseSet.serializer(), local)
+        val echo = EchoGuard(request)
         return ai.run(request, LenientTrueFalse, { s ->
-            val items = s.items.filter { it.statement.isNotBlank() }.distinctBy { it.statement.lowercase() }
+            val items = s.items.filterNot { echo.echoes(it.statement) }.distinctBy { it.statement.lowercase() }
             if (items.size < minOf(2, count)) invalid("too few statements")
             OutputValidator.Validated(TrueFalseSet(items.take(count)), emptyList())
         }, { local }, lang = lang, arrayKey = "items")
@@ -147,9 +162,10 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun writtenExam(lesson: Lesson, count: Int, difficulty: Int, lang: String?): AiResult<WrittenExam> {
         val local = fallbacks.writtenExam(lesson, count, difficulty, lang)
         val request = payload(prompt(lesson) { LearningPrompts.writtenExam(lesson.title, it, count, difficulty, lang) }, WrittenExam.serializer(), local)
+        val echo = EchoGuard(request)
         // Not cached: a retake should be able to get new questions.
         return ai.runUncached(request, WrittenExam.serializer(), { e ->
-            val qs = e.questions.filter { it.question.isNotBlank() && it.idealAnswer.isNotBlank() }
+            val qs = e.questions.filter { !echo.echoes(it.question) && !echo.echoes(it.idealAnswer) }
                 .map { q -> if (q.keyPoints.isEmpty()) q.copy(keyPoints = ai.local.keyPoints(q.idealAnswer, "").take(4)) else q }
             if (qs.isEmpty()) invalid("no questions")
             OutputValidator.Validated(WrittenExam(qs.take(count)), emptyList())
@@ -162,7 +178,9 @@ class StudyAi(private val ai: LearningAi) {
         if (answer.isBlank()) return AiResult.Ok(local.copy(score = 0.0), com.bookmind.core.ai.GenerationInfo(engine = "local", model = "heuristic-1", promptVersion = LearningPrompts.Versions.WRITTEN_GRADE, aiGenerated = false), emptyList())
         val excerpt = relevantExcerpt(lesson.text, question.question + " " + question.idealAnswer, 1_500)
         val request = payload(LearningPrompts.gradeWritten(question, answer, excerpt, lang), WrittenGrade.serializer(), local)
+        val echo = EchoGuard(LearningPrompts.gradeWritten(ExamQuestion(), "", "", lang))
         return ai.runUncached(request, WrittenGrade.serializer(), { g ->
+            if (echo.echoes(g.feedback)) invalid("feedback repeats the prompt")
             OutputValidator.Validated(g.copy(score = g.score.coerceIn(0.0, 100.0), idealAnswer = g.idealAnswer.ifBlank { question.idealAnswer }, missing = g.missing.filter { it.isNotBlank() }), emptyList())
         }, lang) { local }
     }
@@ -171,8 +189,9 @@ class StudyAi(private val ai: LearningAi) {
     suspend fun oralTurn(question: ExamQuestion, answer: String, alreadyFollowedUp: Boolean, lang: String?): AiResult<OralTurn> {
         val local = fallbacks.oralTurn(question, answer, alreadyFollowedUp, lang)
         val request = payload(LearningPrompts.oralTurn(question, answer, alreadyFollowedUp, lang), OralTurn.serializer(), local)
+        val echo = EchoGuard(LearningPrompts.oralTurn(ExamQuestion(), "", alreadyFollowedUp, lang))
         return ai.runUncached(request, OralTurn.serializer(), { o ->
-            if (o.feedback.isBlank()) invalid("no feedback")
+            if (echo.echoes(o.feedback)) invalid("no feedback")
             val feedback = Sentences.split(o.feedback).take(2).joinToString(" ") { it.text }.ifBlank { o.feedback }
             OutputValidator.Validated(o.copy(score = o.score.coerceIn(0.0, 100.0), feedback = feedback, followUp = o.followUp?.takeIf { !alreadyFollowedUp && it.isNotBlank() }), emptyList())
         }, lang) { local }
@@ -220,5 +239,25 @@ object LenientTrueFalse : JsonTransformingSerializer<TrueFalseSet>(TrueFalseSet.
             val v = (o["isTrue"] ?: o["answer"] ?: o["correct"]) as? JsonPrimitive ?: return@map o
             JsonObject(o + ("isTrue" to JsonPrimitive(v.booleanOrNull ?: (v.contentOrNull?.trim()?.lowercase() in yes))))
         })))
+    }
+}
+
+/**
+ * Small models sometimes copy the instructions into their answer (a flashcard reading "Create 8 flashcards for the
+ * most important concepts…"). Any generated text that repeats five words in a row from the instructions (the
+ * prompt without the book text and the learner's answer) or holds no words at all is treated as unusable.
+ */
+internal class EchoGuard(request: AiRequest) {
+    private val grams = grams(request.user.replace(Regex("<book_text[\\s\\S]*?</book_text>|<user_answer>[\\s\\S]*?</user_answer>"), " "))
+
+    fun echoes(text: String): Boolean {
+        if (words(text).isEmpty()) return true
+        return grams(text).any { it in grams }
+    }
+
+    private companion object {
+        const val N = 5
+        fun words(s: String) = Regex("[\\p{L}\\p{N}]+").findAll(s.lowercase()).map { it.value }.toList()
+        fun grams(s: String): Set<String> = words(s).windowed(N).map { it.joinToString(" ") }.toSet()
     }
 }

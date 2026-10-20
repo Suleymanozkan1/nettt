@@ -117,6 +117,28 @@ class StudyAiTest {
         assertTrue(r.warnings.any { "klasik yöntem" in it }, "${r.warnings}")
     }
 
+    @Test fun `items that repeat the instructions are dropped`() = runTest {
+        val provider = MockAiProvider(script = { r ->
+            if (r.promptVersion == LearningPrompts.Versions.FLASHCARDS) """{"cards":[
+                {"front":"Create 5 flashcards for the most important concepts and facts of this lesson.","back":"…"},
+                {"front":"Kararlılık nedir?","back":"Bir anının ne kadar kalıcı olduğudur."},
+                {"front":"Unutma eğrisi nedir?","back":"Bilginin zamanla nasıl kaybolduğunu gösterir."},
+                {"front":"Aralıklı tekrar neden işe yarar?","back":"Unutmaya yakın hatırlamak izi güçlendirir."}]}"""
+            else r.payload["fallback"] ?: "{}"
+        })
+        val cards = StudyAi(LearningAi({ provider }, baseBackoffMs = 1)).flashcards(lesson(1), 5, "tr")
+        cards as AiResult.Ok
+        assertTrue(cards.info.aiGenerated)
+        assertEquals(3, cards.value.cards.size, "${cards.value.cards}")
+        assertTrue(cards.value.cards.none { "flashcards" in it.front })
+        // Feedback may quote the model answer; only the template counts as an echo.
+        val q = ExamQuestion("Kararlılık nedir?", "Kararlılık bir anının ne kadar kalıcı olduğunu gösteren ölçüdür.", listOf("kalıcılık"))
+        val grader = MockAiProvider(script = { """{"score":80,"missing":[],"feedback":"İyi: kararlılık bir anının ne kadar kalıcı olduğunu gösteren ölçüdür.","idealAnswer":""}""" })
+        val g = StudyAi(LearningAi({ grader }, baseBackoffMs = 1)).gradeWritten(q, "Anının kalıcılığı.", lesson(1), "tr")
+        g as AiResult.Ok
+        assertTrue(g.info.aiGenerated && g.value.score == 80.0)
+    }
+
     @Test fun `lesson text is packed into 60 percent of a small context`() = runTest {
         var seen: OnDevicePrompt? = null
         val small = OnDeviceProvider("tiny", 1_024) { seen = it; "{}" }
