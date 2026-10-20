@@ -21,19 +21,26 @@ class OnDeviceProvider(
     // The model is part of the id so cached results of one model are not served for another.
     override val id: String = "on-device:$modelName"
 
-    /** Typical budget (answers up to ~1k tokens); used to size book chunks. */
+    /** Prompt budget (at most 60 % of the context); used to size book chunks. */
     override val inputBudgetChars: Int = budgetChars(contextTokens)
 
-    override fun inputBudgetFor(request: AiRequest): Int = budgetChars(contextTokens, answerTokens(request))
+    override fun inputBudgetFor(request: AiRequest): Int = budgetChars(contextTokens, request.maxOutputTokens)
 
-    /** Never let the answer take more than half the context, so the book excerpt keeps room. */
-    private fun answerTokens(request: AiRequest) = request.maxOutputTokens.coerceAtMost(contextTokens / 2)
+    /**
+     * The answer gets whatever the prompt leaves (at least the 40 % reserved by [budgetChars]), up to what the
+     * task asked for, so a long book excerpt can never push the reply out of the context window.
+     */
+    private fun answerTokens(request: AiRequest, promptChars: Int): Int {
+        val promptTokens = (promptChars / CHARS_PER_TOKEN).toInt() + TEMPLATE_TOKENS
+        return request.maxOutputTokens.coerceAtMost((contextTokens - promptTokens).coerceAtLeast(contextTokens * 2 / 5))
+    }
 
     // One inference at a time: two would double the memory needed on the phone.
     private val lock = Mutex()
 
     override suspend fun complete(request: AiRequest): AiResponse {
-        val prompt = OnDevicePrompt(request.system + "\nReply with a single JSON object only.", request.user, answerTokens(request), request.temperature)
+        val system = request.system + "\nReply with a single JSON object only."
+        val prompt = OnDevicePrompt(system, request.user, answerTokens(request, system.length + request.user.length), request.temperature)
         val raw = lock.withLock {
             try {
                 generate(prompt)
@@ -56,12 +63,21 @@ class OnDeviceProvider(
         /** Removes reasoning blocks some small models emit before the answer ("<think>…</think>"). */
         fun clean(raw: String): String = raw.replace(Regex("(?s)<think>.*?</think>"), "").substringAfter("</think>").trim()
 
+        /** Turkish needs more tokens per character than English, so the estimate is conservative. */
+        const val CHARS_PER_TOKEN = 2.6
+        const val TEMPLATE_TOKENS = 120
+
+        /** Share of the context the prompt (system text + book excerpt) may use; the rest is kept for the answer. */
+        const val PROMPT_SHARE = 0.6
+
         /**
-         * Prompt characters for a context of [contextTokens], keeping room for an answer of [answerTokens] and the
-         * chat template. Turkish needs more tokens per character than English, so the estimate is conservative
-         * (≈2.6 characters per token).
+         * Prompt characters for a context of [contextTokens]: at most 60 % of the context, and less when the task
+         * needs a longer answer ([answerTokens]) than the remaining 40 % holds.
          */
-        fun budgetChars(contextTokens: Int, answerTokens: Int = 1_000): Int =
-            ((contextTokens - answerTokens - 200).coerceAtLeast(600) * 2.6).toInt()
+        fun budgetChars(contextTokens: Int, answerTokens: Int = 0): Int {
+            val share = (contextTokens * PROMPT_SHARE).toInt()
+            val leftForPrompt = contextTokens - answerTokens - TEMPLATE_TOKENS
+            return ((minOf(share, leftForPrompt).coerceAtLeast(contextTokens / 4) - TEMPLATE_TOKENS) * CHARS_PER_TOKEN).toInt().coerceAtLeast(400)
+        }
     }
 }

@@ -23,14 +23,19 @@ class FreeAiTest {
         assertTrue(p.free)
         assertEquals("on-device:gemma-4-e2b", p.id)
         assertTrue(seen!!.system.startsWith("sys") && seen!!.user == "user" && seen!!.maxOutputTokens == 300)
-        // A long answer leaves less room for the prompt, and never takes more than half the context.
-        val long = request.copy(maxOutputTokens = 4_500)
-        assertTrue(p.inputBudgetFor(long) < p.inputBudgetFor(request))
-        assertTrue(p.inputBudgetFor(long) >= OnDeviceProvider.budgetChars(4_096, 2_048))
+        // The prompt never takes more than 60 % of the context; a long answer shrinks it further.
+        for (ctx in listOf(1_024, 2_048, 4_096, 8_192)) {
+            val promptTokens = OnDeviceProvider.budgetChars(ctx) / OnDeviceProvider.CHARS_PER_TOKEN
+            assertTrue(promptTokens <= ctx * 0.6, "context $ctx: $promptTokens prompt tokens")
+        }
+        assertTrue(p.inputBudgetFor(request.copy(maxOutputTokens = 3_000)) < p.inputBudgetFor(request))
+        // Answer room: whatever the prompt leaves, never below 40 % of the context.
+        OnDeviceProvider("m", 2_048) { seen = it; "{}" }.complete(request.copy(user = "x".repeat(3_000), maxOutputTokens = 5_000))
+        assertTrue(seen!!.maxOutputTokens in 819..2_048, "${seen!!.maxOutputTokens}")
         val failing = OnDeviceProvider("m", 4_096) { throw IllegalStateException("model file missing") }
         assertFailsWith<AiException.Server> { failing.complete(request) }
         assertFailsWith<AiException.InvalidOutput> { OnDeviceProvider("m", 4_096) { "  " }.complete(request) }
-        assertTrue(OnDeviceProvider.budgetChars(4_096) in 7_000..8_000)
+        assertTrue(OnDeviceProvider.budgetChars(4_096) in 5_500..6_500)
         assertTrue(OnDeviceProvider.budgetChars(512) > 0)
     }
 

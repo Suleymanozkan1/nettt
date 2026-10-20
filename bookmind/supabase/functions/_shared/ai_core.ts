@@ -13,6 +13,7 @@ export const TASKS = [
   "STORY",
   "CONCEPT_LINKS",
   "ANSWER",
+  "STUDY",
 ] as const;
 export type Task = (typeof TASKS)[number];
 

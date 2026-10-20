@@ -55,6 +55,8 @@ class MockAiProvider(
                 local.answer(p["question"].orEmpty(), p["passages"]?.let { j.decodeFromString(MockPayload.Passages.serializer(), it).items }.orEmpty()
                     .map { com.bookmind.core.search.Passage(it.chapterIndex, it.title, 0, it.text.length, it.text) }),
             )
+            // Study modules pass their AI-free result along; the mock echoes it as a well-formed model answer.
+            AiTask.STUDY -> p["fallback"] ?: "{}"
             AiTask.CONCEPT_LINKS -> j.encodeToString(
                 ConceptLinksDraft.serializer(),
                 local.links(p["conceptsByBook"]?.let { j.decodeFromString(MockPayload.ConceptsByBook.serializer(), it).map }.orEmpty()),

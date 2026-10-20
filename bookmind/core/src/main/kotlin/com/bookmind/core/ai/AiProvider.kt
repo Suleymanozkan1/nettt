@@ -16,7 +16,7 @@ interface AiProvider {
     suspend fun complete(request: AiRequest): AiResponse
 }
 
-enum class AiTask { BOOK_ANALYSIS, CHAPTER_ANALYSIS, SUMMARY, QUIZ, TEACH, GRADE, STORY, CONCEPT_LINKS, ANSWER }
+enum class AiTask { BOOK_ANALYSIS, CHAPTER_ANALYSIS, SUMMARY, QUIZ, TEACH, GRADE, STORY, CONCEPT_LINKS, ANSWER, STUDY }
 
 data class AiRequest(
     val task: AiTask,

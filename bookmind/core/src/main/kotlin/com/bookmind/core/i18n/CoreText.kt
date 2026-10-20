@@ -34,6 +34,23 @@ sealed class CoreText {
     abstract fun mcqPrompt(term: String): String
     abstract fun inBook(explanation: String): String
     abstract fun blankAnswer(answer: String): String
+    // ----- Study hub ("Next lesson") fallbacks -----
+    abstract fun podcastWelcome(topic: String): String
+    abstract fun podcastAskTerm(term: String): String
+    abstract val podcastWhyMatters: String
+    abstract val podcastClosing: String
+    abstract fun flashFront(term: String): String
+    abstract fun gapFromEarlier(chapterNumber: Int): String
+    abstract val gapCore: String
+    abstract val gapMistake: String
+    abstract fun examExplain(term: String): String
+    abstract fun examCompare(a: String, b: String): String
+    abstract fun examApply(term: String): String
+    abstract fun oralFollowUp(point: String): String
+    abstract val oralGood: String
+    abstract val oralPartial: String
+    abstract val oralMissed: String
+
     abstract fun falseBecause(term: String, sentence: String): String
     abstract val trueInBook: String
     abstract fun explainOwnWords(term: String): String
@@ -168,6 +185,21 @@ sealed class CoreText {
         override fun mcqPrompt(term: String) = "“$term” için aşağıdakilerden hangisi kitaptaki açıklamaya uygundur?"
         override fun inBook(explanation: String) = "Kitapta: $explanation"
         override fun blankAnswer(answer: String) = "Boşluğa “$answer” gelir."
+        override fun podcastWelcome(topic: String) = "Merhaba, hoş geldiniz! Bugün “$topic” konusunu konuşuyoruz. Kısaca neyi anlatıyor?"
+        override fun podcastAskTerm(term: String) = "Peki “$term” tam olarak ne demek?"
+        override val podcastWhyMatters = "Bu neden önemli, biraz açar mısın?"
+        override val podcastClosing = "Toparlarsak, dinleyicilerimizin aklında ne kalmalı?"
+        override fun flashFront(term: String) = "“$term” nedir?"
+        override fun gapFromEarlier(chapterNumber: Int) = "Bu bölümde kullanılıyor ama Bölüm $chapterNumber'de anlatıldı."
+        override val gapCore = "Bu bölümün temel taşı; diğer fikirler buna dayanıyor."
+        override val gapMistake = "Bu konuda bir soruyu yanlış cevapladın ya da boş bıraktın."
+        override fun examExplain(term: String) = "“$term” kavramını kendi cümlelerinle açıkla."
+        override fun examCompare(a: String, b: String) = "“$a” ile “$b” arasındaki ilişkiyi ya da farkı açıkla."
+        override fun examApply(term: String) = "“$term” fikrini günlük hayattan bir örnekle nasıl uygularsın?"
+        override fun oralFollowUp(point: String) = "Peki “$point” açısından düşünürsek ne dersin?"
+        override val oralGood = "Güzel, ana noktaları yakaladın."
+        override val oralPartial = "Kısmen doğru, ama bazı önemli noktalar eksik."
+        override val oralMissed = "Bu cevap sorunun özünü kaçırıyor."
         override fun falseBecause(term: String, sentence: String) = "Yanlış. Kitapta bu ifade “$term” için geçiyor: $sentence"
         override val trueInBook = "Doğru; bu ifade kitapta geçiyor."
         override fun explainOwnWords(term: String) = "“$term” kavramını kendi cümlelerinle açıkla."
@@ -306,6 +338,21 @@ sealed class CoreText {
         override fun mcqPrompt(term: String) = "Which of the following matches the book's explanation of “$term”?"
         override fun inBook(explanation: String) = "In the book: $explanation"
         override fun blankAnswer(answer: String) = "The blank is “$answer”."
+        override fun podcastWelcome(topic: String) = "Hello and welcome! Today we're talking about “$topic”. What is it about, in short?"
+        override fun podcastAskTerm(term: String) = "So what exactly does “$term” mean?"
+        override val podcastWhyMatters = "Why does that matter? Can you say a bit more?"
+        override val podcastClosing = "To wrap up, what should our listeners remember?"
+        override fun flashFront(term: String) = "What is “$term”?"
+        override fun gapFromEarlier(chapterNumber: Int) = "Used in this chapter but explained in chapter $chapterNumber."
+        override val gapCore = "A cornerstone of this chapter; the other ideas build on it."
+        override val gapMistake = "You answered a question on this wrong or left it empty."
+        override fun examExplain(term: String) = "Explain “$term” in your own words."
+        override fun examCompare(a: String, b: String) = "Explain the relationship or the difference between “$a” and “$b”."
+        override fun examApply(term: String) = "How would you apply “$term” in everyday life? Give an example."
+        override fun oralFollowUp(point: String) = "And if we look at it from the angle of “$point”?"
+        override val oralGood = "Good, you covered the main points."
+        override val oralPartial = "Partly right, but some important points are missing."
+        override val oralMissed = "This answer misses the core of the question."
         override fun falseBecause(term: String, sentence: String) = "False. In the book this statement is about “$term”: $sentence"
         override val trueInBook = "True; this statement appears in the book."
         override fun explainOwnWords(term: String) = "Explain “$term” in your own words."

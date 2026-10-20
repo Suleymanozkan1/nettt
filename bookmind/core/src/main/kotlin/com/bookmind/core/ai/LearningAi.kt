@@ -42,13 +42,14 @@ class LearningAi(
     private fun localInfo(promptVersion: String) =
         GenerationInfo(engine = "local", model = "heuristic-1", promptVersion = promptVersion, aiGenerated = false, createdAt = clock())
 
-    private suspend fun <T> run(
+    internal suspend fun <T> run(
         request: AiRequest,
         serializer: KSerializer<T>,
         validate: (T) -> OutputValidator.Validated<T>,
         fallback: (() -> T)?,
         allowFallback: Boolean = true,
         lang: String? = null,
+        arrayKey: String? = null,
     ): AiResult<T> {
         val t = CoreText.of(lang)
         val provider = try { providerSource() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
@@ -77,7 +78,7 @@ class LearningAi(
             try {
                 val response = provider.complete(current)
                 meter?.record(request.task, response)
-                val validated = validate(AiJson.decode(serializer, response.text))
+                val validated = validate(AiJson.decode(serializer, response.text, arrayKey))
                 cache?.put(cacheKey, request.task, AiJson.json.encodeToString(serializer, validated.value))
                 return AiResult.Ok(
                     validated.value,
@@ -242,8 +243,14 @@ class LearningAi(
         }
     }
 
-    private suspend fun <T> runUncached(request: AiRequest, serializer: KSerializer<T>, validate: (T) -> OutputValidator.Validated<T>, lang: String?, fallback: () -> T): AiResult<T> =
-        LearningAi(providerSource, null, meter, clock, maxAttempts, baseBackoffMs, local).run(request, serializer, validate, fallback, lang = lang)
+    internal suspend fun <T> runUncached(request: AiRequest, serializer: KSerializer<T>, validate: (T) -> OutputValidator.Validated<T>, lang: String?, arrayKey: String? = null, fallback: () -> T): AiResult<T> =
+        LearningAi(providerSource, null, meter, clock, maxAttempts, baseBackoffMs, local).run(request, serializer, validate, fallback, lang = lang, arrayKey = arrayKey)
+
+    /** Characters of book text that fit next to [request]'s instructions for the current provider; null without AI. */
+    suspend fun promptBudget(request: AiRequest): Int? {
+        val provider = try { providerSource() } catch (e: CancellationException) { throw e } catch (_: Exception) { null } ?: return null
+        return provider.inputBudgetFor(request) - request.system.length - request.user.length
+    }
 
     suspend fun gradeOpenAnswer(question: String, modelAnswer: String, rubric: List<String>, userAnswer: String, lang: String?, excerpt: String, acceptable: List<String> = emptyList()): AiResult<GradeResult> {
         val request = PromptBuilder.grade(question, modelAnswer, rubric, userAnswer, lang, excerpt)
