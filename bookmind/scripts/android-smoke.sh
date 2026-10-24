@@ -44,12 +44,14 @@ wait_text() { # wait_text "label" [seconds] [quiet]
 tap_text() { wait_text "$1" "${2:-60}"; local xy; xy=$(find_text "$1"); adb shell input tap $xy; sleep 1; }
 # Like tap_text, but swipes the content up until the label is on screen (small emulator screens).
 scroll_tap_text() {
-  local i
-  for i in 1 2 3 4 5 6; do
+  local i size w h
+  size=$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1); w=${size%x*}; h=${size#*x}
+  # Down first; if the label is above the current position (the page kept its scroll state), go back up.
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
     if [ -n "$(find_text "$1")" ]; then tap_text "$1" 5; return 0; fi
-    local size w h
-    size=$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1); w=${size%x*}; h=${size#*x}
-    adb shell input swipe $((w / 2)) $((h * 7 / 10)) $((w / 2)) $((h * 3 / 10)) 300; sleep 1
+    if [ $i -le 6 ]; then adb shell input swipe $((w / 2)) $((h * 7 / 10)) $((w / 2)) $((h * 3 / 10)) 300
+    else adb shell input swipe $((w / 2)) $((h * 3 / 10)) $((w / 2)) $((h * 8 / 10)) 300; fi
+    sleep 1
   done
   tap_text "$1" 10
 }
@@ -89,7 +91,10 @@ adb exec-out screencap -p > "$OUT/02-library.png"
 
 echo "== book detail and on-device quick summary, all in English"
 tap_text "The Science of Learning"
-wait_text "Review" 60
+# The Gemini summary card is first on the book page; this CI build has no API key, so it must say so.
+wait_text "AI book summary" 60
+wait_text "no Gemini API key" 10
+adb exec-out screencap -p > "$OUT/02b-book-gemini-card.png"
 scroll_tap_text "Quick summary"
 tap_text "Generate"
 wait_text "Key idea" 90
@@ -120,12 +125,6 @@ tap_text "Start"
 wait_text "Question 1" 120
 adb exec-out screencap -p > "$OUT/03d-written-exam.png"
 adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
-
-echo "== Gemini summary card: this CI build has no API key, so the card says the classic methods are used"
-# Back on the book page after the exam: the summary card is near the top.
-scroll_tap_text "AI book summary"
-wait_text "no Gemini API key" 30
-adb exec-out screencap -p > "$OUT/04-gemini-card.png"
 
 echo "== crash check"
 no_crash
