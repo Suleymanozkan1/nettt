@@ -161,6 +161,8 @@ sealed class CoreText {
     abstract val noHeadings: String
     abstract val pdfScanned: String
     abstract val pdfNoOutline: String
+    abstract fun backMatterRemoved(pages: Int): String
+    abstract fun backMatterChapters(count: Int): String
     abstract fun epubMissing(href: String): String
     abstract val epubNoText: String
 
@@ -312,7 +314,9 @@ sealed class CoreText {
         override val pageAbbrev = "s."
         override val noHeadings = "Bölüm başlıkları bulunamadı; metin eşit büyüklükte kısımlara ayrıldı."
         override val pdfScanned = "PDF taranmış görünüyor; metin çıkarmak için OCR gerekli."
-        override val pdfNoOutline = "PDF içinde içindekiler/başlık bulunamadı; sayfalar gruplandı."
+        override val pdfNoOutline = "PDF içinde içindekiler/başlık bulunamadı; metin yaklaşık 6.500 kelimelik bölümlere ayrıldı."
+        override fun backMatterRemoved(pages: Int) = "İçindekiler, dizin ve kaynakça sayfaları ayıklandı ($pages sayfa)."
+        override fun backMatterChapters(count: Int) = "İçindekiler, dizin veya kaynakça bölümü ayıklandı ($count)."
         override fun epubMissing(href: String) = "Eksik içerik: $href"
         override val epubNoText = "EPUB içinde okunabilir metin bulunamadı."
     }
@@ -465,7 +469,9 @@ sealed class CoreText {
         override val pageAbbrev = "p."
         override val noHeadings = "No chapter headings were found; the text was split into equal parts."
         override val pdfScanned = "The PDF looks scanned; OCR is needed to extract text."
-        override val pdfNoOutline = "No table of contents or headings were found in the PDF; pages were grouped."
+        override val pdfNoOutline = "The PDF has no outline or headings; the text was split into sections of about 6,500 words."
+        override fun backMatterRemoved(pages: Int) = "Contents, index and bibliography pages were left out ($pages pages)."
+        override fun backMatterChapters(count: Int) = "A contents, index or bibliography section was left out ($count)."
         override fun epubMissing(href: String) = "Missing content: $href"
         override val epubNoText = "No readable text was found in the EPUB."
     }

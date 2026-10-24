@@ -40,6 +40,8 @@ object EpubParser {
         val navHref = opf.select("manifest > item").firstOrNull { it.attr("properties").split(' ').contains("nav") }?.attr("href")
         val ncxId = opf.selectFirst("spine")?.attr("toc")
         val tocTitles = readToc(zip, opfDir, navHref, ncxId?.let { manifest[it]?.first })
+        // Documents the book itself marks as contents, index or bibliography (EPUB 2 guide, EPUB 3 landmarks).
+        val backMatter = backMatterDocuments(zip, opf, opfDir, navHref) + listOfNotNull(navHref?.let { resolve(opfDir, it) })
 
         val chapters = mutableListOf<ExtractedChapter>()
         val warnings = mutableListOf<String>()
@@ -48,6 +50,7 @@ object EpubParser {
             val (href, mediaType) = manifest[itemref.attr("idref")] ?: continue
             if (!mediaType.contains("html")) continue
             val path = resolve(opfDir, href)
+            if (path in backMatter) continue
             val html = zip.readText(path) ?: run { warnings += t.epubMissing(href); null } ?: continue
             val doc = Jsoup.parse(html)
             val text = htmlToText(doc)
@@ -58,7 +61,26 @@ object EpubParser {
             chapters += ExtractedChapter(chapterTitle, text, startLocation = href.substringAfterLast('/'))
         }
         if (chapters.isEmpty()) warnings += t.epubNoText
-        ExtractedBook(title, author, language ?: LanguageDetector.detect(chapters.joinToString(" ") { it.text }), chapters, warnings)
+        BackMatterFilter.clean(ExtractedBook(title, author, language ?: LanguageDetector.detect(chapters.joinToString(" ") { it.text }), chapters, warnings), lang)
+    }
+
+    private val backMatterTypes = setOf("toc", "index", "bibliography")
+
+    private fun backMatterDocuments(zip: ZipFile, opf: Document, opfDir: String, navHref: String?): Set<String> {
+        val paths = mutableSetOf<String>()
+        opf.select("guide > reference").forEach { r ->
+            if (r.attr("type").lowercase() in backMatterTypes) paths += resolve(opfDir, r.attr("href").substringBefore('#'))
+        }
+        if (navHref != null) {
+            val navPath = resolve(opfDir, navHref)
+            val navDir = navPath.substringBeforeLast('/', "")
+            zip.readText(navPath)?.let { html ->
+                Jsoup.parse(html).select("nav").filter { it.attr("epub:type") == "landmarks" }.flatMap { it.select("a[href]") }.forEach { a ->
+                    if (a.attr("epub:type").split(' ').any { it.lowercase() in backMatterTypes }) paths += resolve(navDir, a.attr("href").substringBefore('#'))
+                }
+            }
+        }
+        return paths
     }
 
     private fun readToc(zip: ZipFile, opfDir: String, navHref: String?, ncxHref: String?): Map<String, String> {

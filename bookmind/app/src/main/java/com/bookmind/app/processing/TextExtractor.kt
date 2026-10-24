@@ -39,7 +39,7 @@ import kotlin.coroutines.resumeWithException
 @Singleton
 class TextExtractor @Inject constructor(@ApplicationContext private val context: Context) {
 
-    suspend fun extract(file: File, type: SourceType, onProgress: (Int) -> Unit): ExtractedBook = withContext(Dispatchers.IO) {
+    suspend fun extract(file: File, type: SourceType, onProgress: suspend (Int) -> Unit): ExtractedBook = withContext(Dispatchers.IO) {
         when (type) {
             SourceType.PDF -> extractPdf(file, onProgress)
             SourceType.EPUB -> try { EpubParser.parse(file, AppLanguage.tag) } catch (e: EpubParser.EpubException) {
@@ -50,7 +50,7 @@ class TextExtractor @Inject constructor(@ApplicationContext private val context:
         }
     }
 
-    private suspend fun extractPdf(file: File, onProgress: (Int) -> Unit): ExtractedBook {
+    private suspend fun extractPdf(file: File, onProgress: suspend (Int) -> Unit): ExtractedBook {
         PDFBoxResourceLoader.init(context)
         val doc = try {
             // Temp-file backed buffers keep memory flat for large PDFs.
@@ -93,7 +93,7 @@ class TextExtractor @Inject constructor(@ApplicationContext private val context:
      * OCR for scanned PDFs using on-device ML Kit text recognition (Latin script, covers Turkish letters).
      * Quality depends on the scan; the UI tells the user that OCR text may contain errors.
      */
-    suspend fun ocrPdf(file: File, maxPages: Int = 400, onProgress: (Int) -> Unit): ExtractedBook = withContext(Dispatchers.Default) {
+    suspend fun ocrPdf(file: File, maxPages: Int = 400, onProgress: suspend (Int) -> Unit): ExtractedBook = withContext(Dispatchers.Default) {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         try {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->

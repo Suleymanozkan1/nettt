@@ -36,6 +36,8 @@ class LearningAi(
     private val maxAttempts: Int = 3,
     private val baseBackoffMs: Long = 700,
     val local: LocalHeuristicEngine = LocalHeuristicEngine(),
+    /** Tasks that always use the classic engine (e.g. bulk analysis of every chunk of a book on a paid API). */
+    private val localOnly: Set<AiTask> = emptySet(),
 ) {
     data class Book(val title: String, val author: String?, val language: String?, val genre: BookGenre)
 
@@ -52,7 +54,7 @@ class LearningAi(
         arrayKey: String? = null,
     ): AiResult<T> {
         val t = CoreText.of(lang)
-        val provider = try { providerSource() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        val provider = if (request.task in localOnly) null else currentProvider()
         if (provider == null) {
             // On-device mode is the user's choice, not a problem: the origin badge says "local", no warning needed.
             return localOrFail(fallback, request.promptVersion, null, AiException.NotConfigured())
@@ -131,6 +133,9 @@ class LearningAi(
         }
     }
 
+    private suspend fun currentProvider(): AiProvider? =
+        try { providerSource() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+
     private fun <T> localOrFail(fallback: (() -> T)?, promptVersion: String, warning: String?, error: AiException): AiResult<T> =
         if (fallback == null) AiResult.Failed(error) else AiResult.Ok(fallback(), localInfo(promptVersion), listOfNotNull(warning))
 
@@ -147,7 +152,7 @@ class LearningAi(
      * chapter) instead of having their prompt trimmed, so no part of the book is skipped.
      */
     suspend fun chunkChars(): Int {
-        val provider = try { providerSource() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        val provider = if (AiTask.CHAPTER_ANALYSIS in localOnly) null else currentProvider()
         return ((provider?.inputBudgetChars ?: 20_000) * 0.6).toInt().coerceIn(2_000, 12_000)
     }
 
@@ -244,11 +249,11 @@ class LearningAi(
     }
 
     internal suspend fun <T> runUncached(request: AiRequest, serializer: KSerializer<T>, validate: (T) -> OutputValidator.Validated<T>, lang: String?, arrayKey: String? = null, fallback: () -> T): AiResult<T> =
-        LearningAi(providerSource, null, meter, clock, maxAttempts, baseBackoffMs, local).run(request, serializer, validate, fallback, lang = lang, arrayKey = arrayKey)
+        LearningAi(providerSource, null, meter, clock, maxAttempts, baseBackoffMs, local, localOnly).run(request, serializer, validate, fallback, lang = lang, arrayKey = arrayKey)
 
     /** Characters of book text that fit next to [request]'s instructions for the current provider; null without AI. */
     suspend fun promptBudget(request: AiRequest): Int? {
-        val provider = try { providerSource() } catch (e: CancellationException) { throw e } catch (_: Exception) { null } ?: return null
+        val provider = (if (request.task in localOnly) null else currentProvider()) ?: return null
         return provider.inputBudgetFor(request) - request.system.length - request.user.length
     }
 

@@ -3,7 +3,9 @@ package com.bookmind.app.ui.study
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bookmind.app.ai.ModelManager
+import com.bookmind.app.ai.GeminiConfig
+import com.bookmind.app.data.settings.AiMode
+import com.bookmind.app.data.settings.SettingsRepository
 import com.bookmind.app.data.db.SessionType
 import com.bookmind.app.data.repo.ReviewRepository
 import com.bookmind.app.data.repo.SessionTracker
@@ -33,15 +35,16 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** What the hub shows about the on-device model. */
-enum class AiStatus { READY, NOT_INSTALLED, OFF }
+/** What the hub shows about Gemini. */
+enum class AiStatus { READY, NO_KEY, OFF }
 
 @HiltViewModel
 class StudyHubViewModel @Inject constructor(
     handle: SavedStateHandle,
     private val repo: StudyHubRepository,
     private val reviews: ReviewRepository,
-    models: ModelManager,
+    settings: SettingsRepository,
+    gemini: GeminiConfig,
 ) : ViewModel() {
     val bookId: String = handle["bookId"]!!
 
@@ -58,11 +61,11 @@ class StudyHubViewModel @Inject constructor(
     val state: StateFlow<State> = _state.asStateFlow()
     private var chosen: Int? = handle.get<String>("lesson")?.toIntOrNull()
 
-    val ai: StateFlow<AiStatus> = models.state.map { s ->
+    val ai: StateFlow<AiStatus> = settings.settings.map { s ->
         when {
-            !s.supported || !s.enabled -> AiStatus.OFF
-            s.selected != null && s.selected.id in s.installed -> AiStatus.READY
-            else -> AiStatus.NOT_INSTALLED
+            !gemini.configured -> AiStatus.NO_KEY
+            s.aiMode == AiMode.GEMINI -> AiStatus.READY
+            else -> AiStatus.OFF
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiStatus.READY)
 

@@ -40,6 +40,7 @@ import com.bookmind.app.R
 import com.bookmind.app.ui.analytics.AnalyticsScreen
 import com.bookmind.app.ui.ask.AskScreen
 import com.bookmind.app.ui.ai.AiScreen
+import com.bookmind.app.ui.booksummary.BookSummaryScreen
 import com.bookmind.app.data.repo.StudyModule
 import com.bookmind.app.ui.study.OralExamScreen
 import com.bookmind.app.ui.study.StudyHubScreen
@@ -142,7 +143,6 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
             onOpenConcept = { nav.navigate(Routes.concept(it)) },
             onOpenQuizResult = { nav.navigate(Routes.quizResult(it)) },
             onOpenPlan = { nav.navigate(Routes.plan(it)) },
-            onOpenAi = { nav.navigate(Routes.AI) },
         )
     }
     composable(Routes.LIBRARY) {
@@ -170,6 +170,8 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
             onPlan = { nav.navigate(Routes.plan(bookId)) },
             onAsk = { nav.navigate(Routes.ask(bookId)) },
             onStudy = { nav.navigate(Routes.study(bookId)) },
+            onBookSummary = { nav.navigate(Routes.bookSummary(bookId)) },
+            onOpenAi = { nav.navigate(Routes.AI) },
             onDeleted = back,
         )
     }
@@ -226,6 +228,7 @@ private fun androidx.navigation.NavGraphBuilder.graph(nav: NavHostController) {
     composable(Routes.NOTIFICATIONS) { NotificationSettingsScreen(onBack = back) }
     composable(Routes.SETTINGS) { SettingsScreen(onNotifications = { nav.navigate(Routes.NOTIFICATIONS) }, onAi = { nav.navigate(Routes.AI) }) }
     composable(Routes.AI) { AiScreen(onBack = back) }
+    composable(Routes.BOOK_SUMMARY, listOf(str("bookId"))) { BookSummaryScreen(onBack = back) }
     composable(Routes.STUDY, listOf(str("bookId"), optional("lesson"))) { entry ->
         val bookId = entry.arguments!!.getString("bookId")!!
         StudyHubScreen(

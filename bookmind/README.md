@@ -24,21 +24,23 @@ eğrisine göre tekrar ettiren Android uygulaması. Amaç kitapları hızlı tü
 - **Kişiselleştirme:** öğrenme planı (eksik günleri suçluluk yaratmadan kaydırır), aktif hatırlama düzeyleri,
   hikâye/örnek üretici, kişisel notlar ve vurgular, kitaplar arası bilgi grafiği, oyunlaştırma (kaliteye dayalı XP,
   esnek seri), analitik, bildirimler (yerel saat dilimi, gün seçimi, tatil modu, gizli içerik).
-- **Telefonda çalışan ücretsiz yapay zekâ:** Profil → Yapay zekâ asistanı (veya ana ekrandaki kart) üzerinden tek
-  dokunuşla açık bir model indirilir (önerilen: **Gemma 4 E2B**, 2,6 GB, Apache-2.0; 12 GB RAM'li telefonlarda Gemma 4
-  E4B, 4 GB'lık telefonlarda Qwen3 0.6B). Model Google'ın LiteRT-LM motoruyla tamamen telefonda, internetsiz çalışır;
-  başka bir uygulama, hesap, API anahtarı ya da ücret gerekmez ve kitap metni telefondan çıkmaz. Model inene kadar
-  (veya yapay zekâ kapalıyken) klasik yöntemler kullanılır (TextRank, BM25, kurallar). Ücretli bulut yapay zekâ
-  varsayılan derlemeden çıkarılmıştır. Ayrıntılar: [docs/FREE_AI.md](docs/FREE_AI.md).
+- **Gemini ile kitap özeti:** kitap bölümlere ayrılır (5.000–8.000 kelimelik parçalar, mümkünse bölüm
+  başlıklarından), her bölüm yaklaşık %10 uzunlukta ana fikir, örnek ve kavramlarıyla özetlenir, ardından
+  2.000–4.000 kelimelik genel özet yazılır. Özet telefonda saklanır, aynı kitap ikinci kez gönderilmez; 429 ve
+  sunucu hatalarında bekleyip yeniden dener, günlük kota bitince sıfırlanma saatinde kaldığı yerden devam eder. Model
+  ve oranlar tek dosyada (`ai-config.properties`), API anahtarı `local.properties`'te ya da `GEMINI_API_KEY` ortam
+  değişkeninde. Quiz, öğretmen, kitaba sor ve ders modülleri de Gemini'yi kullanır. Anahtarsız derlemede ya da yapay
+  zekâ kapalıyken her şey telefonda klasik yöntemlerle (TextRank, BM25, kurallar) yapılır. Ayrıntılar:
+  [docs/GEMINI.md](docs/GEMINI.md).
 - **Sonraki ders (Öğren · Pratik yap · Sınav):** her bölüm bir ders. ÖĞREN: akıllı metin (ana fikir, kavramlar,
   önemli noktalar, alıntılar), iki sesli podcast (telefonun kendi sesleri, ±10 sn, 1×/1,25×/1,5×, canlı transkript),
   hafıza kartları (3B çevirme, kaydır: biliyorum / tekrar et), bilgi boşlukları. PRATİK YAP: boşluk doldurma +
   eşleştirme, A–D test, doğru/yanlış, tekrar. SINAV: yazılı deneme (3/5/10 soru, zorluk, soru başına puan + karne)
   ve sözlü deneme (soru sesli okunur, cevap mikrofona söylenir, kısa ek soru, sözlü puan). Hepsi telefondaki modelle,
   model yoksa klasik yöntemle çalışır; hatalar tekrar kuyruğuna girer. Ayrıntılar: [docs/STUDY_HUB.md](docs/STUDY_HUB.md).
-- **Kitaba sor ve sesli dinle:** kitapla soru-cevap (BM25 + telefondaki model ya da kitaptan alıntı) ve telefonun
-  yerleşik sesli okuması.
-- **Gizlilik:** kitap metni telefonundan çıkmaz; yapay zekâ için tek ağ bağlantısı modelin bir kez indirilmesidir. Hesap isteğe bağlıdır.
+- **Kitaba sor ve sesli dinle:** kitapla soru-cevap (BM25 + Gemini ya da kitaptan alıntı) ve telefonun yerleşik
+  sesli okuması.
+- **Gizlilik:** yapay zekâ açıkken özetlenen metin ve sorular Google Gemini API'ye gönderilir (ücretsiz kotada Google bunları ürün geliştirmede kullanabilir; bkz. [docs/GEMINI.md](docs/GEMINI.md)). Yapay zekâ kapalıyken kitap metni telefondan çıkmaz. Hesap isteğe bağlıdır.
 
 Ayrıntılar: [docs/FINAL_IMPLEMENTATION_REPORT.md](docs/FINAL_IMPLEMENTATION_REPORT.md).
 
@@ -67,8 +69,8 @@ cp local.properties.example local.properties   # sdk.dir'i ayarla; Supabase alan
 ./gradlew :app:installDebug                      # bağlı cihaza/emülatöre kurar
 ```
 
-Supabase alanları boşsa uygulama **yalnızca yerel modda** çalışır: içe aktarma, analiz (cihaz üzerindeki motor),
-özet, quiz, öğretmen, tekrar, notlar, plan ve bildirimler tam çalışır; hesap ve bulut yapay zekâ kapalıdır.
+Supabase alanları boşsa hesap ve senkronizasyon kapalıdır; içe aktarma, analiz, özet, quiz, öğretmen, tekrar,
+notlar, plan ve bildirimler tam çalışır. Gemini anahtarı yoksa yapay zekâ yerine klasik yöntemler kullanılır.
 İlk açılışta onboarding önce **dili** sorar (Türkçe varsayılan, İngilizce seçilebilir); arayüz, cihaz üzerinde üretilen içerik, yapay zekâ çıktısı, plan başlıkları, uyarılar ve bildirimler tek bu dili kullanır, ekranda iki dil karışmaz. İsteğe bağlı olarak özgün demo kitabını seçilen dilde ekler (**Öğrenmenin Bilimi** / **The Science of Learning**, CC0).
 
 ### Yapılandırma
@@ -77,12 +79,13 @@ Supabase alanları boşsa uygulama **yalnızca yerel modda** çalışır: içe a
 |---|---|---|
 | `local.properties` veya ortam değişkeni | `bookmind.supabaseUrl` / `BOOKMIND_SUPABASEURL` | `https://<proje>.supabase.co` (debug derlemede yerel `http://10.0.2.2:54321` de kabul edilir) |
 | `local.properties` veya ortam değişkeni | `bookmind.supabaseAnonKey` / `BOOKMIND_SUPABASEANONKEY` | Supabase anon (public) anahtarı |
-| `local.properties` | `bookmind.enableCloudAi=true` | **Ücretli** bulut yapay zekâyı derlemeye ekler. Varsayılan: kapalı |
+| `local.properties` veya ortam değişkeni | `gemini.apiKey` / `GEMINI_API_KEY` | Google Gemini API anahtarı. Git'e girmez; yoksa uygulama klasik yöntemlerle çalışır. Bkz. [docs/GEMINI.md](docs/GEMINI.md) |
+| `ai-config.properties` (git'te) | `gemini.model`, `gemini.thinkingLevel`, `summary.chapterRatio`, … | Model adı ve özet oranları; değiştirip yeniden derle |
+| `local.properties` | `bookmind.enableCloudAi=true` | İsteğe bağlı sunucu vekili (Supabase Edge Function) üzerinden ücretli yapay zekâ. Varsayılan: kapalı |
 | Edge Function secret | `ANTHROPIC_API_KEY` | Yalnızca bulut açık derlemelerde ve sunucuda. Uygulamaya **asla** konmaz |
 | Edge Function secret | `AI_MODEL` (varsayılan `claude-opus-5-5`), `AI_DAILY_REQUEST_LIMIT` (150) | İsteğe bağlı |
 
-Uygulama içi ayarlar (Profil sekmesi): yapay zekâ asistanı (model indirme, model seçimi, aç/kapat; debug derlemede
-mock), tekrar algoritması (FSRS/SM-2), hedef hatırlama oranı, günlük yeni kart sayısı, tema, dil (TR/EN), spoiler koruması.
+Uygulama içi ayarlar (Profil sekmesi): yapay zekâ asistanı (Gemini durumu, aç/kapat, gizlilik bilgisi, özet ayarları), tekrar algoritması (FSRS/SM-2), hedef hatırlama oranı, günlük yeni kart sayısı, tema, dil (TR/EN), spoiler koruması.
 
 ### Supabase (isteğe bağlı bulut)
 
@@ -132,7 +135,7 @@ Release derlemesi şu an **debug anahtarıyla** imzalanır (yerel denemeler içi
 - [Mimari](docs/ARCHITECTURE.md)
 - [Veri modeli](docs/DATA_MODEL.md)
 - [AI hattı](docs/AI_PIPELINE.md)
-- [Ücretsiz yapay zekâ: envanter, geçiş, değerlendirme](docs/FREE_AI.md)
+- [Gemini ile kitap özeti: kurulum, yapılandırma, limitler, gizlilik](docs/GEMINI.md)
 - [Sonraki ders: Öğren / Pratik yap / Sınav modülleri](docs/STUDY_HUB.md)
 - [Öğrenme ve aralıklı tekrar](docs/LEARNING_AND_SPACED_REPETITION.md)
 - [Gizlilik ve telif](docs/PRIVACY_AND_COPYRIGHT.md)

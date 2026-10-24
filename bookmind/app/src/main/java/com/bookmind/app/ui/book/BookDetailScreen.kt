@@ -148,6 +148,8 @@ fun BookDetailScreen(
     onPlan: () -> Unit,
     onAsk: () -> Unit,
     onStudy: () -> Unit,
+    onBookSummary: () -> Unit,
+    onOpenAi: () -> Unit,
     onDeleted: () -> Unit,
     vm: BookDetailViewModel = hiltViewModel(),
 ) {
@@ -198,6 +200,7 @@ fun BookDetailScreen(
             }
             if (usable) {
                 item {
+                    com.bookmind.app.ui.booksummary.BookSummaryCard(onBookSummary, onOpenAi, Modifier.padding(top = 20.dp))
                     next?.let { (lesson, total) -> NextLessonCard(lesson, total, onStudy) }
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         PrimaryButton(stringResource(R.string.review), onReview, Modifier.weight(1f), icon = Icons.Filled.Style)
@@ -303,7 +306,7 @@ fun BookDetailScreen(
 /** Entry to the study hub: the next lesson with its Learn / Practice / Exam modules. */
 @Composable
 private fun NextLessonCard(lesson: StudyHubRepository.LessonInfo, total: Int, onStudy: () -> Unit) {
-    HeroCard(Modifier.fillMaxWidth().padding(top = 20.dp).clickable(onClick = onStudy).testTag("next_lesson")) {
+    HeroCard(Modifier.fillMaxWidth().padding(top = 12.dp).clickable(onClick = onStudy).testTag("next_lesson")) {
         Column(Modifier.padding(18.dp)) {
             Text(stringResource(R.string.study_next_lesson).uppercase(AppLanguage.locale), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f))
             Text(lesson.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis,

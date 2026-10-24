@@ -1,9 +1,9 @@
 package com.bookmind.core.ai
 
 /**
- * Provider-agnostic LLM boundary. Free implementations: [OnDeviceProvider] (an open-weights model running on
- * the phone) and [MockAiProvider] (deterministic, no network). [RemoteAiProvider] calls an optional paid cloud backend and is
- * compiled out of default builds. The app never embeds provider API keys.
+ * Provider-agnostic LLM boundary: [com.bookmind.core.ai.gemini.GeminiProvider] (Google Gemini API),
+ * [MockAiProvider] (deterministic, no network) and [RemoteAiProvider] (optional backend proxy that keeps the
+ * provider key on the server). Without a provider the classic algorithms in [LocalHeuristicEngine] are used.
  */
 interface AiProvider {
     val id: String

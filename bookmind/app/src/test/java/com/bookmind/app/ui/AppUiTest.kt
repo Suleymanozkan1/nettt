@@ -62,6 +62,7 @@ class AppUiTest {
     private var scenario: ActivityScenario<MainActivity>? = null
 
     @Before fun setUp() {
+        TestGeminiModule.reset()
         hilt.inject()
         runBlocking { settings.clear() }
     }
@@ -116,8 +117,8 @@ class AppUiTest {
         clickTab(R.string.tab_library)
         waitForText("Öğrenmenin Bilimi")
         compose.onAllNodesWithText("Öğrenmenin Bilimi").onFirst().performClick()
-        waitForText(s(R.string.summaries))
-        // The summaries sit below the "Next lesson" card: scroll the page to them first.
+        waitForText(s(R.string.review))
+        // The summaries sit below the summary and "Next lesson" cards: scroll the page to them first.
         compose.onAllNodes(hasScrollToNodeAction()).onFirst().performScrollToNode(hasText(s(R.string.summary_quick)))
         compose.onNodeWithText(s(R.string.summary_quick)).performClick()
         compose.onNodeWithText(s(R.string.generate)).performClick()
@@ -199,29 +200,25 @@ class AppUiTest {
         waitForText("Aktif Hatırlama")
     }
 
-    @Test fun ai_assistant_offers_a_free_on_device_model_from_home_and_profile() {
-        // An 8 GB arm64 phone: the recommended model fits, the 12 GB one does not.
-        org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build::class.java, "SUPPORTED_ABIS", arrayOf("arm64-v8a"))
-        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        shadowOf(am).setMemoryInfo(android.app.ActivityManager.MemoryInfo().apply { totalMem = 8L * 1_073_741_824 })
-        ready()
+    @Test fun ai_assistant_shows_gemini_status_and_the_book_page_explains_a_build_without_key() {
+        val bookId = ready()!!
         launch()
-        // Home offers the one-tap setup until a model is installed; "Not now" hides it for good.
-        waitForText(s(R.string.ai_promo_title))
-        compose.onNodeWithContentDescription(s(R.string.ai_not_now)).performClick()
-        eventually { runBlocking { settings.current().aiPromptDismissed } }
+        waitForText(s(R.string.home_title))
         clickTab(R.string.tab_profile)
         waitForText(s(R.string.ai_title))
-        compose.onNodeWithText(s(R.string.ai_status_not_installed)).assertExists()
+        // Test builds have no Gemini key: everything uses the classic methods and says so.
+        compose.onNodeWithText(s(R.string.ai_status_no_key)).performScrollTo().assertExists()
         compose.onNodeWithText(s(R.string.ai_title)).performScrollTo().performClick()
         waitForText(s(R.string.ai_hero_title))
-        compose.onAllNodesWithText("Gemma 4 E2B", substring = true).onFirst().assertExists()
-        compose.onNodeWithText(s(R.string.ai_model_too_big, "%.1f".format(8.0))).performScrollTo().assertExists()
-        compose.onNodeWithText("Qwen3 0.6B").performScrollTo().assertExists()
-        compose.onNodeWithText(s(R.string.ai_privacy_2)).performScrollTo().assertExists()
-        // Picking another model only changes the selection; nothing is downloaded without a tap on Download.
-        compose.onNodeWithText("Qwen3 0.6B").performClick()
-        eventually { runBlocking { settings.current().onDeviceModel } == "qwen3-0.6b" }
-        assertEquals(com.bookmind.app.data.settings.AiMode.ON_DEVICE, runBlocking { settings.current().aiMode })
+        compose.onNodeWithText(s(R.string.ai_no_key_title)).assertExists()
+        compose.onNodeWithText(s(R.string.ai_privacy_sent)).performScrollTo().assertExists()
+        compose.onNodeWithText("fake-gemini").assertExists()
+        assertEquals(com.bookmind.app.data.settings.AiMode.GEMINI, runBlocking { settings.current().aiMode })
+        scenario!!.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        clickTab(R.string.tab_library)
+        waitForText("Öğrenmenin Bilimi")
+        compose.onAllNodesWithText("Öğrenmenin Bilimi").onFirst().performClick()
+        waitForText(s(R.string.book_summary_no_key))
+        assertTrue(bookId.isNotEmpty())
     }
 }

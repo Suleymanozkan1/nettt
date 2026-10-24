@@ -1,6 +1,7 @@
 package com.bookmind.app.data.repo
 
 import android.content.Context
+import androidx.core.content.edit
 import com.bookmind.app.data.db.BookMindDatabase
 import com.bookmind.app.data.db.LearningItemType
 import com.bookmind.app.data.settings.AppLanguage
@@ -62,7 +63,7 @@ class StudyHubRepository @Inject constructor(
 
     fun markDone(bookId: String, lesson: Int, module: StudyModule) {
         val set = prefs.getStringSet(bookId, emptySet()).orEmpty() + "$lesson:${module.name}"
-        prefs.edit().putStringSet(bookId, set).apply()
+        prefs.edit { putStringSet(bookId, set) }
         _version.value++
     }
 

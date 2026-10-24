@@ -107,7 +107,7 @@ class ScreenshotTour {
             val title = bookTitle()
             click(s(R.string.tab_library)); waitFor(title); pause(500); shot("${prefix}04_library")
             compose.onAllNodesWithText(title, substring = true).onFirst().performClick()
-            waitFor(s(R.string.summaries)); pause(500); shot("${prefix}05_book")
+            waitFor(s(R.string.review)); pause(500); shot("${prefix}05_book")
             compose.onAllNodes(hasScrollToNodeAction()).onFirst().performScrollToNode(hasText(s(R.string.summary_quick)))
             click(s(R.string.summary_quick)); pause(500); shot("${prefix}06a_summary_empty")
             click(s(R.string.generate)); waitFor(s(R.string.origin_local)); pause(500); shot("${prefix}06_summary")

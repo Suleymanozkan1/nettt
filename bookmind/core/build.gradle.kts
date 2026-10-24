@@ -24,6 +24,4 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
-    // Desktop build of the same on-device engine the app uses; only for the opt-in real-model test.
-    testImplementation(libs.litertlm.jvm)
 }

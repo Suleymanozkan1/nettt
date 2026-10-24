@@ -99,12 +99,7 @@ class HomeViewModel @Inject constructor(
     private val plans: PlanRepository,
     quizzes: QuizRepository,
     db: BookMindDatabase,
-    models: com.bookmind.app.ai.ModelManager,
-    private val settings: com.bookmind.app.data.settings.SettingsRepository,
 ) : ViewModel() {
-    val ai = models.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    val aiPromptDismissed = settings.settings.map { it.aiPromptDismissed }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
-    fun dismissAiPrompt() = viewModelScope.launch { settings.update { it.copy(aiPromptDismissed = true) } }
 
     private val _home = MutableStateFlow<InsightsRepository.Home?>(null)
     val home = _home.asStateFlow()
@@ -145,15 +140,12 @@ fun HomeScreen(
     onOpenConcept: (String) -> Unit,
     onOpenQuizResult: (String) -> Unit,
     onOpenPlan: (String) -> Unit,
-    onOpenAi: () -> Unit,
     vm: HomeViewModel = hiltViewModel(),
 ) {
     LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose { } }
     val home by vm.home.collectAsStateWithLifecycle()
     val quizzes by vm.recentQuizzes.collectAsStateWithLifecycle()
     val tasks by vm.todayTasks.collectAsStateWithLifecycle()
-    val ai by vm.ai.collectAsStateWithLifecycle()
-    val aiDismissed by vm.aiPromptDismissed.collectAsStateWithLifecycle()
     val today = DateTimeFormatter.ofPattern("d MMMM, EEEE", AppLanguage.locale).format(LocalDateTime.now())
     val cs = MaterialTheme.colorScheme
     val x = MaterialTheme.extended
@@ -212,12 +204,6 @@ fun HomeScreen(
                     StatTile(Icons.Filled.LocalFireDepartment, h.streak.current.toString(), stringResource(R.string.stat_streak), x.streak, x.warningContainer, Modifier.weight(1f))
                     StatTile(Icons.Filled.EmojiEvents, stringResource(R.string.level_short, h.level), stringResource(R.string.xp_value, h.xp), cs.primary, cs.primaryContainer, Modifier.weight(1f))
                     StatTile(Icons.Filled.Style, (h.dueToday + h.newAvailable).toString(), stringResource(R.string.stat_due), x.success, x.successContainer, Modifier.weight(1f))
-                }
-            }
-            ai?.let { a ->
-                // Offer the free on-device AI until it is installed; keep showing progress while it downloads.
-                if (a.download != null || (!a.ready && a.selected != null && !aiDismissed)) {
-                    item { AiPromoCard(a, onOpenAi, onDismiss = vm::dismissAiPrompt) }
                 }
             }
             if (tasks.isNotEmpty()) {
@@ -333,37 +319,3 @@ private fun ContinueBook(b: BookEntity, onOpen: () -> Unit, onPlan: () -> Unit) 
     }
 }
 
-@Composable
-private fun AiPromoCard(a: com.bookmind.app.ai.AiState, onOpen: () -> Unit, onDismiss: () -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    val context = androidx.compose.ui.platform.LocalContext.current
-    AppCard(Modifier.fillMaxWidth().padding(top = 14.dp), onClick = onOpen) {
-        Row(verticalAlignment = Alignment.Top) {
-            com.bookmind.app.ui.components.IconBadge(Icons.Filled.AutoAwesome, cs.onPrimary, cs.primary, size = 44.dp, iconSize = 24.dp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.ai_promo_title), style = MaterialTheme.typography.titleMedium)
-                val running = a.download as? com.bookmind.app.ai.AiState.Download.Running
-                if (a.download != null) {
-                    Text(com.bookmind.app.ui.ai.aiStatusText(a), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    com.bookmind.app.ui.components.ProgressBar(running?.fraction ?: 0f, Modifier.fillMaxWidth())
-                } else {
-                    Text(stringResource(R.string.ai_promo_body), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                }
-            }
-            if (a.download == null) {
-                IconButton(onDismiss, Modifier.size(32.dp)) {
-                    Icon(Icons.Filled.Close, stringResource(R.string.ai_not_now), Modifier.size(18.dp), tint = cs.onSurfaceVariant)
-                }
-            }
-        }
-        if (a.download == null) {
-            Spacer(Modifier.height(12.dp))
-            com.bookmind.app.ui.components.PrimaryButton(
-                stringResource(R.string.ai_promo_action) + " · " + android.text.format.Formatter.formatShortFileSize(context, a.selected!!.bytes),
-                onOpen, Modifier.fillMaxWidth(), icon = Icons.Filled.AutoAwesome,
-            )
-        }
-    }
-}

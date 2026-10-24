@@ -36,6 +36,7 @@ class LibraryRepository @Inject constructor(
     private val users: UserRepository,
     private val scheduler: WorkScheduler,
     private val clock: AppClock,
+    private val summaries: com.bookmind.app.data.summary.BookSummaryRepository,
 ) {
     companion object {
         const val DEMO_AUTHOR = "BookMind (demo, CC0)"
@@ -129,6 +130,9 @@ class LibraryRepository @Inject constructor(
      */
     suspend fun delete(bookId: String) {
         scheduler.cancelBook(bookId)
+        scheduler.cancelSummary(bookId)
+        // The saved Gemini summary (named after the text's checksum) stays, so re-adding the same book costs nothing.
+        summaries.forget(bookId)
         val book = db.books().get(bookId) ?: return
         val now = clock.now()
         db.withTransaction {

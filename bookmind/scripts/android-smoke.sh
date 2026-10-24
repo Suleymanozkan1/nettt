@@ -2,8 +2,8 @@
 # Release-APK smoke test on an Android emulator (run in CI by reactivecircus/android-emulator-runner).
 # Drives the real UI through the accessibility tree: onboarding -> demo book is processed in the background
 # (WorkManager + Hilt worker, R8-minified) -> library -> quick summary. Fails on any crash in logcat.
-# With AI_SMOKE=1 it also downloads the light on-device model in the app and checks that "Ask the book" is
-# answered by that model (LiteRT-LM on Android, release build).
+# CI builds carry no Gemini API key (it would end up inside the downloadable APK), so the Gemini summary itself
+# is covered by unit tests against a fake server; here the app must show the keyless state without crashing.
 set -euo pipefail
 APK=${APK:-app-x86_64-release.apk}
 PKG=com.bookmind.app
@@ -97,7 +97,7 @@ dump
 if grep -qE 'text="[^"]*(Temel fikir|Hızlı özet|Öne çıkan)' "$OUT/ui.xml"; then echo "FAIL: Turkish text on an English screen"; exit 1; fi
 adb exec-out screencap -p > "$OUT/03-summary.png"
 
-echo "== next lesson hub: Learn / Practise / Exam (classic methods, no model yet)"
+echo "== next lesson hub: Learn / Practise / Exam (classic methods in a keyless build)"
 adb shell input keyevent KEYCODE_BACK; sleep 1
 scroll_tap_text "Start the lesson"
 wait_text "LEARN" 60
@@ -121,62 +121,11 @@ wait_text "Question 1" 120
 adb exec-out screencap -p > "$OUT/03d-written-exam.png"
 adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
 
-if [ "${AI_SMOKE:-0}" = 1 ]; then
-  echo "== on-device AI: download the light model inside the app (real Hugging Face download, SHA-256 check)"
-  # The emulator has ~4 GB RAM, so the app recommends the light model (Qwen3 0.6B, 614 MB).
-  adb shell input keyevent KEYCODE_BACK; sleep 1
-  tap_text "Profile"
-  scroll_tap_text "AI assistant"
-  wait_text "Qwen3 0.6B" 30
-  adb exec-out screencap -p > "$OUT/04-ai-setup.png"
-  tap_text "Download ·" 30
-  if wait_text "Download anyway" 5 quiet; then tap_text "Download anyway"; fi
-  wait_text "AI is ready" 900
-  adb exec-out screencap -p > "$OUT/05-ai-ready.png"
-
-  echo "== ask the book: the answer must come from the model running on the device"
-  adb shell input keyevent KEYCODE_BACK; sleep 1
-  tap_text "Library"
-  tap_text "The Science of Learning"
-  scroll_tap_text "Ask the book"
-  tap_text "Type your question"
-  adb shell input text "Why%sdoes%sspaced%srepetition%swork?"; sleep 1
-  tap_text "Send"
-  # The answer bubble can be taller than the small emulator screen: scroll it up while waiting for the origin label.
-  found=""; deadline=$((SECONDS + 600))
-  while [ $SECONDS -lt $deadline ]; do
-    if [ -n "$(find_text "AI · Qwen3 0.6B")" ]; then found=1; break; fi
-    grep -q 'text="Searching the book…"' "$OUT/ui.xml" || {
-      size=$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1); w=${size%x*}; h=${size#*x}
-      adb shell input swipe $((w / 2)) $((h * 6 / 10)) $((w / 2)) $((h * 3 / 10)) 300
-    }
-    sleep 3
-  done
-  adb exec-out screencap -p > "$OUT/06-ask.png"
-  if [ -z "$found" ]; then
-    grep -q "No AI response" "$OUT/ui.xml" && echo "FAIL: the model failed and the classic method answered"
-    echo "FAIL: the answer did not come from the on-device model"; exit 1
-  fi
-
-  echo "== next lesson with the model: flashcards written by the on-device model (or a labelled classic fallback)"
-  adb shell input keyevent KEYCODE_BACK; sleep 1
-  scroll_tap_text "the lesson"
-  wait_text "LEARN" 60
-  scroll_tap_text "Flashcards"
-  study=""; deadline=$((SECONDS + 600))
-  while [ $SECONDS -lt $deadline ]; do
-    if [ -n "$(find_text "AI · Qwen3 0.6B")" ]; then study=ai; break; fi
-    if [ -n "$(find_text "classic method was used")" ]; then study=fallback; break; fi
-    sleep 3
-  done
-  adb exec-out screencap -p > "$OUT/07-study-ai.png"
-  echo "study flashcards source: ${study:-none}" | tee "$OUT/study-ai.txt"
-  [ -n "$study" ] || { echo "FAIL: flashcards did not load"; exit 1; }
-  wait_text "Card 1 /" 30
-  # Small models sometimes copy the instructions onto a card; those must be filtered out.
-  dump
-  if grep -q 'flashcards for the most important' "$OUT/ui.xml"; then echo "FAIL: a flashcard repeats the prompt"; exit 1; fi
-fi
+echo "== Gemini summary card: this CI build has no API key, so the card says the classic methods are used"
+# Back on the book page after the exam: the summary card is near the top.
+scroll_tap_text "AI book summary"
+wait_text "no Gemini API key" 30
+adb exec-out screencap -p > "$OUT/04-gemini-card.png"
 
 echo "== crash check"
 no_crash

@@ -28,21 +28,29 @@ class WorkScheduler @Inject constructor(private val workManager: WorkManager) {
         workManager.enqueueUniqueWork(processingName(bookId), ExistingWorkPolicy.KEEP, request)
     }
 
-    /** Downloads an on-device model; needs a connection and storage, survives app restarts and resumes. */
-    fun downloadModel(modelId: String, tag: String) {
-        val request = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
-            .setInputData(workDataOf(ModelDownloadWorker.KEY_MODEL to modelId))
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 20, TimeUnit.SECONDS)
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).setRequiresStorageNotLow(true).build())
-            .addTag(TAG_MODEL)
-            .addTag(tag)
+    /**
+     * Summarises a book with Gemini once a connection is available. [delayMs] postpones it (rate limit or daily quota);
+     * [replace] restarts a pending run, otherwise a run that is already queued is kept. [afterCurrent] is for the
+     * worker itself: the next run is chained after the running one instead of cancelling it.
+     */
+    fun summarizeBook(bookId: String, delayMs: Long = 0, replace: Boolean = false, afterCurrent: Boolean = false) {
+        val request = OneTimeWorkRequestBuilder<BookSummaryWorker>()
+            .setInputData(workDataOf(BookSummaryWorker.KEY_BOOK_ID to bookId))
+            .setInitialDelay(delayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .addTag(TAG_SUMMARY)
+            .addTag("book:$bookId")
             .build()
-        workManager.enqueueUniqueWork(MODEL_DOWNLOAD, ExistingWorkPolicy.REPLACE, request)
+        val policy = when {
+            afterCurrent -> ExistingWorkPolicy.APPEND_OR_REPLACE
+            replace -> ExistingWorkPolicy.REPLACE
+            else -> ExistingWorkPolicy.KEEP
+        }
+        workManager.enqueueUniqueWork(summaryName(bookId), policy, request)
     }
 
-    fun cancelModelDownload() = workManager.cancelUniqueWork(MODEL_DOWNLOAD)
-
-    fun modelDownloadInfo() = workManager.getWorkInfosForUniqueWorkFlow(MODEL_DOWNLOAD)
+    fun cancelSummary(bookId: String) = workManager.cancelUniqueWork(summaryName(bookId))
 
     fun cancelBook(bookId: String) = workManager.cancelUniqueWork(processingName(bookId))
 
@@ -83,11 +91,11 @@ class WorkScheduler @Inject constructor(private val workManager: WorkManager) {
     companion object {
         const val TAG_PROCESSING = "processing"
         const val TAG_REMINDER = "reminder"
-        const val TAG_MODEL = "model"
-        const val MODEL_DOWNLOAD = "model-download"
+        const val TAG_SUMMARY = "summary"
         const val REMINDER = "reminder"
         const val SYNC_NOW = "sync-now"
         const val SYNC_PERIODIC = "sync-periodic"
         fun processingName(bookId: String) = "process-$bookId"
+        fun summaryName(bookId: String) = "summary-$bookId"
     }
 }

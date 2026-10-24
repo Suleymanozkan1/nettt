@@ -20,14 +20,14 @@ Kitabın her bölümü bir **ders**tir. Kitap sayfasındaki "Sonraki ders" kart�
 
 ## Yapay zekâ nasıl kullanılıyor
 
-- **Model:** Profil → Yapay zekâ asistanı'ndan uygulama içinde indirilen `.litertlm` model (Gemma 4 E2B/E4B, Qwen3 0.6B),
-  LiteRT-LM ile telefonda çalışır. Bağlam uzunluğunu model belirler (Gemma 8192, Qwen3 4096 token); kullanıcı ayarı yoktur.
+- **Model:** Google Gemini API (`ai-config.properties` içindeki model; bkz. [GEMINI.md](GEMINI.md)). Anahtarsız derlemede
+  ya da yapay zekâ kapalıyken her modül klasik yöntemle üretilir. (İlk sürüm cihaz içi LiteRT-LM modeliyle yazılmıştı;
+  küçük modeller için konan korumalar — bağlam bütçesi, JSON onarımı, talimat tekrarı filtresi — Gemini'de de çalışır.)
 - **İstemler:** `core/.../ai/study/LearningPrompts.kt` — her modül için tek görev, birebir JSON örneği, sabit adet ve kısa
   alanlar. Şemalar `StudyModels.kt` içindedir (ör. podcast `{"title","lines":[{"speaker":"A","text":"…"}]}`, test
   `{"questions":[{"question","options":[4],"answer":0-3,"explanation"}]}`).
-- **%60 / %40 kuralı:** `OnDeviceProvider` istemi (sistem + talimat + ders metni) bağlamın en fazla %60'ında tutar, kalanı
-  cevaba ayrılır. Ders metni sığmazsa `ContextPacker` metni kesmek yerine TextRank ile en merkezi cümleleri kitap
-  sırasıyla seçer.
+- **Bağlam bütçesi:** ders metni sağlayıcının istem bütçesine sığmazsa `ContextPacker` metni kesmek yerine TextRank ile
+  en merkezi cümleleri kitap sırasıyla seçer (Gemini'nin bütçesi geniş olduğundan pratikte nadiren gerekir).
 - **JSON temizleyici:** `JsonSanitizer` markdown çitlerini, BOM'u, açıklama metnini, sondaki virgülleri temizler; çıplak
   diziyi beklenen nesneye sarar (`[…]` → `{"cards":[…]}`), kesilen çıktıyı kapatır. Küçük modellerin farklı yazımları
   kabul edilir: `"answer":"C"` / `"2"` / seçenek metni → indeks; `"isTrue":"Doğru"` → `true`; konuşmacı adları

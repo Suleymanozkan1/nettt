@@ -85,7 +85,12 @@ class BookProcessor @Inject constructor(
         db.books().setStatus(book.id, ProcessingStatus.EXTRACTING, 2, null, clock.now())
         val source = db.sources().forBook(book.id) ?: throw ImportException(ImportException.Reason.UNREADABLE, "no source")
         val file = files.resolve(source.fileReference ?: throw ImportException(ImportException.Reason.UNREADABLE))
-        val onProgress: (Int) -> Unit = { _ -> }
+        // Text extraction (PDF pages, OCR) shows as 2–20 % of the book's progress bar.
+        var shown = -1
+        val onProgress: suspend (Int) -> Unit = { percent ->
+            val p = 2 + percent.coerceIn(0, 100) * 18 / 100
+            if (p != shown) { shown = p; db.books().setStatus(book.id, ProcessingStatus.EXTRACTING, p, null, clock.now()) }
+        }
         val extracted = if (useOcr && book.sourceType == SourceType.PDF) extractor.ocrPdf(file, onProgress = onProgress) else extractor.extract(file, book.sourceType, onProgress)
         if (extracted.needsOcr) {
             db.books().setStatus(book.id, ProcessingStatus.NEEDS_OCR, 0, extracted.warnings.joinToString("\n"), clock.now())

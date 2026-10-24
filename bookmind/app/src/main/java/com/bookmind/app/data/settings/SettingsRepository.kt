@@ -18,14 +18,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Where generated content comes from. All modes except REMOTE are free:
- * - ON_DEVICE: an open-weights model downloaded in the app and running on the phone (LiteRT-LM). Default; until
- *   the model is downloaded the classic algorithms are used.
- * - LOCAL: AI turned off; classic on-device algorithms only (TextRank, BM25, rules).
- * - REMOTE: the optional paid cloud backend; only exists in builds made with bookmind.enableCloudAi=true.
+ * Where generated content comes from:
+ * - GEMINI: Google's Gemini API (model and key from the build, see ai-config.properties). Default; builds without a
+ *   key use the classic algorithms.
+ * - LOCAL: AI turned off; classic on-device algorithms only (TextRank, BM25, rules). No book text leaves the phone.
+ * - REMOTE: the optional backend proxy; only exists in builds made with bookmind.enableCloudAi=true.
  * - MOCK: deterministic test provider (debug builds).
  */
-enum class AiMode { ON_DEVICE, LOCAL, REMOTE, MOCK }
+enum class AiMode { GEMINI, LOCAL, REMOTE, MOCK }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
@@ -36,7 +36,7 @@ data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     /** "tr" (default) or "en"; see [AppLanguage]. */
     val language: String = AppLanguage.DEFAULT,
-    val aiMode: AiMode = AiMode.ON_DEVICE,
+    val aiMode: AiMode = AiMode.GEMINI,
     val algorithm: SrsAlgorithm = SrsAlgorithm.FSRS,
     val desiredRetention: Float = 0.9f,
     val newItemsPerDay: Int = 15,
@@ -47,10 +47,6 @@ data class AppSettings(
     val lastSyncAt: Long = 0,
     /** Per-table pull cursors (server timestamps, ISO-8601) as a JSON object. */
     val syncCursors: String = "{}",
-    /** Id of the chosen on-device model in [com.bookmind.app.ai.ModelCatalog]; empty = the one recommended for this phone. */
-    val onDeviceModel: String = "",
-    /** The "turn on AI" card on the home screen was dismissed. */
-    val aiPromptDismissed: Boolean = false,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("settings")
@@ -74,8 +70,6 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         val summaryLength = stringPreferencesKey("summary_length")
         val lastSync = longPreferencesKey("last_sync_at")
         val cursors = stringPreferencesKey("sync_cursors")
-        val onDeviceModel = stringPreferencesKey("on_device_model")
-        val aiPromptDismissed = booleanPreferencesKey("ai_prompt_dismissed")
     }
 
     val settings: Flow<AppSettings> = store.data.map(::read)
@@ -84,8 +78,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         onboardingDone = p[Keys.onboarding] ?: false,
         theme = p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
         language = AppLanguage.normalize(p[Keys.language]),
-        // Earlier versions stored LOCAL as the default and had a "computer" mode; both now mean the on-device model.
-        aiMode = p[Keys.aiMode]?.let { runCatching { AiMode.valueOf(it) }.getOrNull() }?.takeIf { p[Keys.aiModeVersion] == 2 } ?: AiMode.ON_DEVICE,
+        aiMode = readAiMode(p[Keys.aiMode], p[Keys.aiModeVersion]),
         algorithm = p[Keys.algorithm]?.let { runCatching { SrsAlgorithm.valueOf(it) }.getOrNull() } ?: SrsAlgorithm.FSRS,
         desiredRetention = (p[Keys.retention] ?: 0.9f).coerceIn(0.7f, 0.97f),
         newItemsPerDay = (p[Keys.newPerDay] ?: 15).coerceIn(0, 200),
@@ -95,11 +88,18 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
         summaryLength = p[Keys.summaryLength] ?: "MEDIUM",
         lastSyncAt = p[Keys.lastSync] ?: 0,
         syncCursors = p[Keys.cursors] ?: "{}",
-        onDeviceModel = p[Keys.onDeviceModel] ?: "",
-        aiPromptDismissed = p[Keys.aiPromptDismissed] ?: false,
     )
 
     suspend fun current(): AppSettings = settings.first()
+
+    /**
+     * Version 3 replaced the on-device model with Gemini: an old "ON_DEVICE" choice becomes GEMINI, "AI off" (LOCAL)
+     * stays off. Values from before version 2 (when LOCAL was only the default) start with Gemini.
+     */
+    private fun readAiMode(stored: String?, version: Int?): AiMode = when {
+        stored == null || version == null || version < 2 || stored == "ON_DEVICE" -> AiMode.GEMINI
+        else -> runCatching { AiMode.valueOf(stored) }.getOrDefault(AiMode.GEMINI)
+    }
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         store.edit { p ->
@@ -109,7 +109,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
             p[Keys.language] = AppLanguage.normalize(s.language)
             AppLanguage.tag = AppLanguage.normalize(s.language)
             p[Keys.aiMode] = s.aiMode.name
-            p[Keys.aiModeVersion] = 2
+            p[Keys.aiModeVersion] = 3
             p[Keys.algorithm] = s.algorithm.name
             p[Keys.retention] = s.desiredRetention.coerceIn(0.7f, 0.97f)
             p[Keys.newPerDay] = s.newItemsPerDay.coerceIn(0, 200)
@@ -119,8 +119,6 @@ class SettingsRepository @Inject constructor(@ApplicationContext context: Contex
             p[Keys.summaryLength] = s.summaryLength
             p[Keys.lastSync] = s.lastSyncAt
             p[Keys.cursors] = s.syncCursors
-            p[Keys.onDeviceModel] = s.onDeviceModel
-            p[Keys.aiPromptDismissed] = s.aiPromptDismissed
         }
     }
 

@@ -53,9 +53,9 @@ object MarkdownParser {
         val all = chapters.joinToString("\n\n") { it.text }
         if (chapters.size <= 1) {
             val (split, synthetic) = ChapterDetector.split(all, lang)
-            return ExtractedBook(bookTitle, null, LanguageDetector.detect(all), split, syntheticChapters = synthetic)
+            return BackMatterFilter.clean(ExtractedBook(bookTitle, null, LanguageDetector.detect(all), split, syntheticChapters = synthetic), lang)
         }
-        return ExtractedBook(bookTitle, null, LanguageDetector.detect(all), chapters)
+        return BackMatterFilter.clean(ExtractedBook(bookTitle, null, LanguageDetector.detect(all), chapters), lang)
     }
 
     fun stripInline(s: String): String = s

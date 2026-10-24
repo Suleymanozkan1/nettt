@@ -106,10 +106,9 @@ class SettingsViewModel @Inject constructor(
     private val syncEngine: com.bookmind.app.sync.SyncEngine,
     db: BookMindDatabase,
     clock: AppClock,
-    models: com.bookmind.app.ai.ModelManager,
+    val gemini: com.bookmind.app.ai.GeminiConfig,
 ) : ViewModel() {
     val cloudAvailable = com.bookmind.app.BuildConfig.CLOUD_AI_ENABLED && auth.isBackendConfigured
-    val ai = models.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val state = settings.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
     val user = users.user.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -254,20 +253,26 @@ fun SettingsScreen(onNotifications: () -> Unit, onAi: () -> Unit, vm: SettingsVi
                 }
 
                 Group(stringResource(R.string.ai_settings)) {
-                    val ai by vm.ai.collectAsStateWithLifecycle()
+                    val aiStatus = when {
+                        !vm.gemini.configured -> com.bookmind.app.ui.ai.AiStatus.NO_KEY
+                        s.aiMode == AiMode.GEMINI -> com.bookmind.app.ui.ai.AiStatus.READY
+                        else -> com.bookmind.app.ui.ai.AiStatus.OFF
+                    }
                     ListRow(
                         stringResource(R.string.ai_title),
-                        subtitle = ai?.let { aiStatusText(it) },
+                        subtitle = aiStatusText(aiStatus, vm.gemini.model),
                         icon = Icons.Filled.AutoAwesome,
                         onClick = onAi,
                     ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = cs.onSurfaceVariant) }
-                    if (vm.cloudAvailable) {
+                    // Gemini and the cloud proxy cost per request: both count against the daily request limit.
+                    if (vm.cloudAvailable || vm.gemini.configured) {
                         Divider()
                         Text(stringResource(R.string.ai_daily_limit, s.dailyAiRequestLimit), style = MaterialTheme.typography.titleSmall)
                         AppSlider(s.dailyAiRequestLimit.toFloat(), { v -> vm.update { it.copy(dailyAiRequestLimit = v.toInt()) } }, valueRange = 0f..300f, steps = 11)
                         val tokens = usage.sumOf { (it.inputTokens ?: 0) + (it.outputTokens ?: 0) }
                         val cost = usage.sumOf { it.costMicros ?: 0 } / 1_000_000.0
-                        Hint(stringResource(R.string.ai_usage, usage.size, tokens, "%.3f".format(cost)))
+                        // Gemini replies carry token counts but no price; the cloud proxy reports its cost.
+                        Hint(if (vm.cloudAvailable) stringResource(R.string.ai_usage, usage.size, tokens, "%.3f".format(cost)) else stringResource(R.string.ai_usage_tokens, usage.size, tokens))
                     }
                 }
 

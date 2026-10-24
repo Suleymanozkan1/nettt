@@ -31,6 +31,7 @@ class AccountRepository @Inject constructor(
     private val settings: SettingsRepository,
     private val scheduler: WorkScheduler,
     private val clock: AppClock,
+    private val summaries: com.bookmind.app.data.summary.BookSummaryRepository,
 ) {
     private val exportTables = listOf(
         "users", "books", "book_sources", "chapters", "concepts", "summaries", "learning_items", "review_states", "review_logs",
@@ -91,6 +92,7 @@ class AccountRepository @Inject constructor(
             // Triggers fire while tables are cleared; nothing from the deleted data may be uploaded later.
             db.openHelper.writableDatabase.execSQL("DELETE FROM sync_outbox")
             files.deleteAll()
+            summaries.deleteAll()
         }
         settings.clear()
     }

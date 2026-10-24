@@ -30,7 +30,11 @@ import com.bookmind.app.processing.TextExtractor
 import com.bookmind.app.sync.SyncEngine
 import com.bookmind.app.util.AppClock
 import com.bookmind.app.work.WorkScheduler
+import com.bookmind.app.ai.GeminiConfig
+import com.bookmind.app.data.summary.BookSummaryRepository
 import com.bookmind.core.ai.AiProvider
+import com.bookmind.core.ai.gemini.TextModel
+import com.bookmind.core.ai.summary.SummaryConfig
 import com.bookmind.core.ai.LearningAi
 import okhttp3.OkHttpClient
 import java.time.Instant
@@ -52,6 +56,9 @@ class MemorySessionStore : SessionStore {
 class TestGraph(
     val provider: AiProvider? = null,
     backend: BackendConfig = BackendConfig("", ""),
+    /** The model the book summaries use; [FakeGemini] answers like a well-behaved model. */
+    val summaryModel: TextModel = FakeGemini(),
+    val gemini: GeminiConfig = GeminiConfig("test-key", "fake-gemini", "low", 1, SummaryConfig(chunkMinWords = 500, chunkMaxWords = 2_000)),
 ) {
     val context: Context = ApplicationProvider.getApplicationContext()
     val clock = FakeClock()
@@ -69,7 +76,8 @@ class TestGraph(
     val ai = LearningAi({ provider }, clock = clock::now, baseBackoffMs = 1)
     val extractor = TextExtractor(context)
     val processor = BookProcessor(db, files, extractor, ai, users, clock)
-    val library = LibraryRepository(context, db, files, users, scheduler, clock)
+    val summaries = BookSummaryRepository(context, db, files, settings, gemini, summaryModel, scheduler, clock)
+    val library = LibraryRepository(context, db, files, users, scheduler, clock, summaries)
     val sessions = SessionTracker(db, users, clock)
     val reviews = ReviewRepository(db, users, settings, clock)
     val study = StudyRepository(db, files, ai, users, sessions, reviews, settings, clock)
@@ -80,7 +88,7 @@ class TestGraph(
     val plans = PlanRepository(db, users, clock)
     val sessionStore = MemorySessionStore()
     val auth = AuthRepository(backend, sessionStore, clock, OkHttpClient())
-    val account = AccountRepository(context, db, files, auth, settings, scheduler, clock)
+    val account = AccountRepository(context, db, files, auth, settings, scheduler, clock, summaries)
     val reminders = ReminderManager(db, users, scheduler, clock)
     val syncEngine = SyncEngine(db, auth, users, settings, files, clock)
 
@@ -94,5 +102,31 @@ class TestGraph(
     fun close() {
         db.close()
         files.deleteAll()
+        summaries.deleteAll()
+    }
+}
+
+/**
+ * A stand-in for Gemini that follows the summary prompts: the asked number of words per part (JSON) or for the
+ * whole book (Markdown). [failWith] makes the next calls fail; [calls] counts requests.
+ */
+class FakeGemini : TextModel {
+    override val model = "fake-gemini"
+    var calls = 0
+    val prompts = mutableListOf<String>()
+    var failWith: ((Int) -> Exception?)? = null
+
+    override suspend fun generate(system: String, user: String, maxOutputTokens: Int, json: Boolean): com.bookmind.core.ai.gemini.ModelReply {
+        calls++
+        prompts += user
+        failWith?.invoke(calls)?.let { throw it }
+        fun words(n: Int, tag: String) = (1..n).joinToString(" ") { "$tag$it" }
+        if (json) {
+            val parts = Regex("<part id=\"(\\d+)\"[^>]*chapter=\"([^\"]*)\"[^>]*target_words=\"(\\d+)\">").findAll(user).toList()
+            val body = parts.joinToString(",") { m -> "{\"id\":${m.groupValues[1]},\"summary\":\"**${m.groupValues[2]}** özeti. ${words(m.groupValues[3].toInt(), "k")}\"}" }
+            return com.bookmind.core.ai.gemini.ModelReply("{\"parts\":[$body]}", "STOP", 500, 100)
+        }
+        val max = Regex("between (\\d+) and (\\d+) words").find(user)!!.groupValues[2].toInt()
+        return com.bookmind.core.ai.gemini.ModelReply("## Kitabın ana fikri\n\nBu kitap **öğrenmeyi** anlatır. ${words(max - 20, "g")}\n\n## Akılda kalanlar\n\n- Aralıklı tekrar\n- Aktif hatırlama", "STOP", 800, 300)
     }
 }

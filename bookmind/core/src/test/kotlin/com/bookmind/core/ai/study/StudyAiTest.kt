@@ -8,8 +8,9 @@ import com.bookmind.core.ai.LearningAi
 import com.bookmind.core.ai.LocalHeuristicEngine
 import com.bookmind.core.ai.LocalHeuristicEngine.ConceptInput
 import com.bookmind.core.ai.MockAiProvider
-import com.bookmind.core.ai.OnDevicePrompt
-import com.bookmind.core.ai.OnDeviceProvider
+import com.bookmind.core.ai.AiProvider
+import com.bookmind.core.ai.AiRequest
+import com.bookmind.core.ai.AiResponse
 import com.bookmind.core.text.MarkdownParser
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -139,13 +140,17 @@ class StudyAiTest {
         assertTrue(g.info.aiGenerated && g.value.score == 80.0)
     }
 
-    @Test fun `lesson text is packed into 60 percent of a small context`() = runTest {
-        var seen: OnDevicePrompt? = null
-        val small = OnDeviceProvider("tiny", 1_024) { seen = it; "{}" }
+    @Test fun `lesson text is packed into the provider's prompt budget`() = runTest {
+        var seen: AiRequest? = null
+        val small = object : AiProvider {
+            override val id = "small"
+            override fun inputBudgetFor(request: AiRequest) = 1_600
+            override suspend fun complete(request: AiRequest): AiResponse { seen = request; return AiResponse("{}", "small") }
+        }
         val long = Lesson(0, "Uzun", book.chapters.joinToString(" ") { it.text }, bookConcepts)
         StudyAi(LearningAi({ small }, baseBackoffMs = 1)).smartNotes(long, "tr")
         val p = seen!!
-        assertTrue(p.system.length + p.user.length <= 1_024 * 0.6 * OnDeviceProvider.CHARS_PER_TOKEN, "${p.system.length + p.user.length}")
+        assertTrue(p.system.length + p.user.length <= 1_600, "${p.system.length + p.user.length}")
         val packed = ContextPacker.pack(long.text, 1_200, engine)
         assertTrue(packed.length <= 1_200 && packed.isNotBlank())
         assertEquals("kısa", ContextPacker.pack("kısa", 1_200, engine))

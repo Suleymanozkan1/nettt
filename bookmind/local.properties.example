@@ -1,5 +1,10 @@
-# Copy to local.properties (git-ignored). Only the public Supabase URL and anon key belong here;
-# LLM provider keys live in the Edge Function secrets (supabase/.env.example).
+# Copy to local.properties (git-ignored). Secrets belong here or in environment variables, never in tracked files.
 sdk.dir=/path/to/Android/sdk
+
+# Google Gemini API key (https://aistudio.google.com/apikey). Or set GEMINI_API_KEY in the environment.
+# Without it the app uses the classic on-device methods. Model and summary sizes: ai-config.properties.
+gemini.apiKey=
+
+# Optional account/sync backend.
 bookmind.supabaseUrl=https://YOUR-PROJECT.supabase.co
 bookmind.supabaseAnonKey=YOUR-ANON-KEY

@@ -10,12 +10,24 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
-// Backend configuration comes from local.properties or environment variables, never from source control.
-// Only the public Supabase URL and anon key are shipped; LLM provider keys live in the Edge Function secrets.
+// Backend configuration and keys come from local.properties or environment variables, never from source control.
 val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 fun config(name: String): String = (localProps.getProperty(name) ?: System.getenv(name.uppercase().replace('.', '_')) ?: "").trim()
+
+// Gemini model and summary settings live in one committed file, ai-config.properties (no secrets in it).
+val aiConfig = Properties().apply {
+    rootProject.file("ai-config.properties").inputStream().use { load(it) }
+}
+fun aiSetting(name: String): String = aiConfig.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
+    ?: throw GradleException("ai-config.properties: '$name' is missing")
+fun aiNumber(name: String): String = aiSetting(name).also {
+    if (it.toDoubleOrNull() == null) throw GradleException("ai-config.properties: '$name' must be a number, was '$it'")
+}
+// The Gemini API key: local.properties (gemini.apiKey=…) or the GEMINI_API_KEY environment variable; never committed.
+val geminiApiKey = (localProps.getProperty("gemini.apiKey") ?: System.getenv("GEMINI_API_KEY") ?: "").trim()
+fun quoted(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
     namespace = "com.bookmind.app"
@@ -34,6 +46,16 @@ android {
         // The paid cloud AI (Supabase Edge Function → hosted LLM) is compiled out unless explicitly enabled.
         // Default builds only use free, local AI: no API key, no per-request cost, book text stays on the user's devices.
         buildConfigField("boolean", "CLOUD_AI_ENABLED", config("bookmind.enableCloudAi").equals("true", ignoreCase = true).toString())
+
+        buildConfigField("String", "GEMINI_API_KEY", quoted(geminiApiKey))
+        buildConfigField("String", "GEMINI_MODEL", quoted(aiSetting("gemini.model")))
+        buildConfigField("String", "GEMINI_THINKING_LEVEL", quoted(aiConfig.getProperty("gemini.thinkingLevel")?.trim().orEmpty()))
+        buildConfigField("int", "GEMINI_MAX_RETRIES", aiNumber("gemini.maxRetries").toDouble().toInt().toString())
+        buildConfigField("double", "SUMMARY_CHAPTER_RATIO", aiNumber("summary.chapterRatio"))
+        buildConfigField("int", "SUMMARY_OVERALL_MIN_WORDS", aiNumber("summary.overallMinWords").toDouble().toInt().toString())
+        buildConfigField("int", "SUMMARY_OVERALL_MAX_WORDS", aiNumber("summary.overallMaxWords").toDouble().toInt().toString())
+        buildConfigField("int", "SUMMARY_CHUNK_MIN_WORDS", aiNumber("summary.chunkMinWords").toDouble().toInt().toString())
+        buildConfigField("int", "SUMMARY_CHUNK_MAX_WORDS", aiNumber("summary.chunkMaxWords").toDouble().toInt().toString())
     }
 
     buildTypes {
@@ -138,8 +160,6 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.pdfbox.android)
     implementation(libs.mlkit.text.recognition)
-    // On-device LLM runtime (Apache-2.0). The model file is imported by the user; nothing is downloaded by the app.
-    implementation(libs.litertlm.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)

@@ -1,6 +1,7 @@
 package com.bookmind.app.ui.study
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -184,17 +185,8 @@ private fun AiStatusRow(ai: AiStatus, onOpenAi: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     when (ai) {
         AiStatus.READY -> Pill(stringResource(R.string.study_ai_ready), Modifier.padding(top = 14.dp), cs.onPrimaryContainer, cs.primaryContainer, Icons.Filled.AutoAwesome)
-        AiStatus.OFF -> Pill(stringResource(R.string.study_ai_off), Modifier.padding(top = 14.dp), x.onInfoContainer, x.infoContainer, Icons.Filled.PhoneAndroid)
-        AiStatus.NOT_INSTALLED -> AppCard(Modifier.fillMaxWidth().padding(top = 14.dp), onClick = onOpenAi, contentPadding = PaddingValues(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconBadge(Icons.Filled.AutoAwesome, cs.primary, cs.primaryContainer, size = 36.dp, iconSize = 18.dp)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.study_ai_missing), style = MaterialTheme.typography.titleSmall)
-                    Text(stringResource(R.string.study_ai_missing_body), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                }
-            }
-        }
+        AiStatus.OFF -> Pill(stringResource(R.string.study_ai_off), Modifier.padding(top = 14.dp).clip(CircleShape).clickable(onClick = onOpenAi), x.onInfoContainer, x.infoContainer, Icons.Filled.PhoneAndroid)
+        AiStatus.NO_KEY -> Pill(stringResource(R.string.study_ai_no_key), Modifier.padding(top = 14.dp), x.onInfoContainer, x.infoContainer, Icons.Filled.PhoneAndroid)
     }
 }
 

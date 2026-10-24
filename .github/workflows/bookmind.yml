@@ -70,7 +70,7 @@ jobs:
     name: Release APK on an Android emulator
     runs-on: ubuntu-latest
     needs: android
-    timeout-minutes: 75
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -92,7 +92,7 @@ jobs:
           ram-size: 4096M
           disk-size: 6000M
           working-directory: bookmind
-          script: AI_SMOKE=1 APK=apks/release/app-x86_64-release.apk timeout 2700 bash scripts/android-smoke.sh
+          script: APK=apks/release/app-x86_64-release.apk timeout 1800 bash scripts/android-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: bookmind-emulator, path: bookmind/test-results, if-no-files-found: ignore }

@@ -10,34 +10,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Free, local AI paths: the on-device model and the AI-free building blocks. */
+/** The AI-free building blocks and the fallback to them. */
 class FreeAiTest {
     private val request = AiRequest(AiTask.SUMMARY, "summary/3", "sys", "user", maxOutputTokens = 300, temperature = 0.2)
-
-    @Test fun `on-device provider sends system and user text, costs nothing and strips reasoning blocks`() = runTest {
-        var seen: OnDevicePrompt? = null
-        val p = OnDeviceProvider("gemma-4-e2b", 4_096) { prompt -> seen = prompt; "<think>hmm</think>\n{\"ok\":true}" }
-        val r = p.complete(request)
-        assertEquals("{\"ok\":true}", r.text)
-        assertEquals(0L, r.costMicros)
-        assertTrue(p.free)
-        assertEquals("on-device:gemma-4-e2b", p.id)
-        assertTrue(seen!!.system.startsWith("sys") && seen!!.user == "user" && seen!!.maxOutputTokens == 300)
-        // The prompt never takes more than 60 % of the context; a long answer shrinks it further.
-        for (ctx in listOf(1_024, 2_048, 4_096, 8_192)) {
-            val promptTokens = OnDeviceProvider.budgetChars(ctx) / OnDeviceProvider.CHARS_PER_TOKEN
-            assertTrue(promptTokens <= ctx * 0.6, "context $ctx: $promptTokens prompt tokens")
-        }
-        assertTrue(p.inputBudgetFor(request.copy(maxOutputTokens = 3_000)) < p.inputBudgetFor(request))
-        // Answer room: whatever the prompt leaves, never below 40 % of the context.
-        OnDeviceProvider("m", 2_048) { seen = it; "{}" }.complete(request.copy(user = "x".repeat(3_000), maxOutputTokens = 5_000))
-        assertTrue(seen!!.maxOutputTokens in 819..2_048, "${seen!!.maxOutputTokens}")
-        val failing = OnDeviceProvider("m", 4_096) { throw IllegalStateException("model file missing") }
-        assertFailsWith<AiException.Server> { failing.complete(request) }
-        assertFailsWith<AiException.InvalidOutput> { OnDeviceProvider("m", 4_096) { "  " }.complete(request) }
-        assertTrue(OnDeviceProvider.budgetChars(4_096) in 5_500..6_500)
-        assertTrue(OnDeviceProvider.budgetChars(512) > 0)
-    }
 
     @Test fun `prompts are trimmed to a small model's budget by shortening book text only`() {
         val long = "x".repeat(10_000)
@@ -49,8 +24,11 @@ class FreeAiTest {
         assertEquals(req, LearningAi.fitToBudget(req, 100_000))
     }
 
-    @Test fun `a failing local model falls back to the on-device engine with a visible warning, never to a paid service`() = runTest {
-        val local = OnDeviceProvider("m", 4_096) { throw IllegalStateException("crashed") }
+    @Test fun `a failing model falls back to the classic method with a visible warning`() = runTest {
+        val local = object : AiProvider {
+            override val id = "failing"
+            override suspend fun complete(request: AiRequest): AiResponse = throw AiException.Server(500, "crashed")
+        }
         val chapter = LocalHeuristicEngine.ChapterInput(0, "Unutma Eğrisi", MarkdownParser.parse(TestFixtures.demoBookMarkdown).chapters[0].text)
         val r = LearningAi({ local }, baseBackoffMs = 1).analyzeChapter(LearningAi.Book("K", null, "tr", BookGenre.INFORMATIONAL), chapter, chapter.text, "")
         r as AiResult.Ok

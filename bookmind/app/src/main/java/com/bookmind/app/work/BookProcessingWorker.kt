@@ -11,6 +11,7 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.bookmind.app.R
 import com.bookmind.app.notifications.Notifier
+import com.bookmind.app.data.summary.BookSummaryRepository
 import com.bookmind.app.processing.BookProcessor
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -20,6 +21,7 @@ class BookProcessingWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val processor: BookProcessor,
+    private val summaries: BookSummaryRepository,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -27,6 +29,8 @@ class BookProcessingWorker @AssistedInject constructor(
         // Long books can take minutes; running in the foreground keeps the work alive and visible.
         runCatching { setForeground(getForegroundInfo()) }
         processor.process(bookId, inputData.getBoolean(KEY_OCR, false))
+        // A freshly processed book gets its Gemini summary in a separate, resumable job.
+        summaries.autoStart(bookId)
         return Result.success()
     }
 
